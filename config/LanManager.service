@@ -1,0 +1,19 @@
+[Unit]
+Description=LaManager service
+After=PsmSsp.service
+
+[Service]
+Type=forking
+WorkingDirectory=/usr/ccsp/lanmanager
+Environment="LOG4C_RCPATH=/etc"
+EnvironmentFile=/etc/device.properties
+ExecStartPre=/bin/sh -c '(/usr/ccsp/utopiaInitCheck.sh)'
+ExecStart=/usr/bin/lan_manager
+ExecStop=/bin/sh -c 'echo "`date`: Stopping/Restarting LanManager" >> ${PROCESS_RESTART_LOG}'
+Restart=always
+
+StandardOutput=syslog+console
+
+[Install]
+WantedBy=multi-user.target
+
