@@ -55,6 +55,9 @@
 #include <telemetry_busmessage_sender.h>
 #include "safec_lib_common.h"
 #include "secure_wrapper.h"
+#include "lan_manager_bridge.h"
+#include "lanmgr_communication_apis.h"
+#include "lan_manager_dml.h"
 
 //Added for lxcserver thread function
 #if defined(_PLATFORM_RASPBERRYPI_)
@@ -122,6 +125,7 @@ static unsigned int factory_mode = 0;
 //static int bridgeModeInBootup = 0;
 static DOCSIS_Esafe_Db_extIf_e eRouterMode = DOCESAFE_ENABLE_DISABLE_extIf;
 static int bridge_mode = BRMODE_ROUTER;
+char *pComponentName = "LOG.RDK.LANMANAGER";
 
 /**************************************************************************/
 /*      LOCAL FUNCTIONS:                                                  */
@@ -394,6 +398,8 @@ static void *LNM_sysevent_threadfunc(void *data)
 static int Lan_Manager_Init()
 {
     LanManagerInfo((" starting lan manager init \n"));
+    PopulateAllBridges();
+    lan_manager_register_dml();
     sysevent_fd = sysevent_open("127.0.0.1", SE_SERVER_WELL_KNOWN_PORT, SE_VERSION, "lan_manager", &sysevent_token);
     LanManagerInfo((" sysevent_fd %d \n", sysevent_fd));
      if (sysevent_fd >= 0)
@@ -459,6 +465,10 @@ int main(int argc, char *argv[])
 #if defined(_ANSC_LINUX)
     daemonize();
 #endif
+    if (lanManagerBusInit() != 0) {
+        LanManagerError(("Failed to initialize RBUS. Exiting.\n"));
+        return 1;
+    }
     t2_init("lanmanager");
     LanManagerLogInit();
     Lan_Manager_Init();
@@ -467,6 +477,7 @@ int main(int argc, char *argv[])
     {
         sleep(1);
     }
+    lanManagerBusClose();
     if( findProcessId(argv[0]) > 0 )
     {
         printf("Already running\n");

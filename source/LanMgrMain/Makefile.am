@@ -21,10 +21,11 @@ bin_PROGRAMS = lan_manager
 AM_CPPFLAGS =   -I$(top_srcdir)/source/include \
                 -I$(top_srcdir)/source/LanMgrMain \
                 -I=${includedir} \
-                -I=${includedir}/ccsp
+                -I=${includedir}/ccsp \
+                -I$(PKG_CONFIG_SYSROOT_DIR)$(includedir)/rbus
+
 AM_CFLAGS = -D_ANSC_LINUX -D_ANSC_USER -D_ANSC_LITTLE_ENDIAN_ -DFEATURE_SUPPORT_RDKLOG $(DBUS_CFLAGS)
 AM_LDFLAGS = -lsysevent -lsyscfg -lsecure_wrapper -ltelemetry_msgsender
 AM_LDFLAGS = $(DBUS_LIBS)
-lan_manager_LDFLAGS = -lsysevent -lsyscfg
-lan_manager_SOURCES = lanmgr_log.c lan_manager.c
-
+lan_manager_LDFLAGS = -lsysevent -lsyscfg -lrbus -lcommonutil
+lan_manager_SOURCES = lanmgr_log.c lan_manager.c lan_manager_bridge.c lanmgr_communication_apis.c lan_manager_dml.c
