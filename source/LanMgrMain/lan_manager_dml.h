@@ -26,6 +26,7 @@ typedef struct DataModel
 } DataModel;
 
 extern DataModel gDM;
+extern int g_count;
 
 int lan_manager_register_dml();
 void lan_manager_unregister_dml();
