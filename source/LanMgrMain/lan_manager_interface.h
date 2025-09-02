@@ -255,6 +255,8 @@ typedef struct {
     SecurityConfig securityConfig;
     bool IGD_Enable;
     BridgeStatus status;
+    uint32_t instNum;
+    char alias[ALIAS_MAX_LEN];
 } LanConfig;
 
 #endif /* LAN_MANAGER_INTERFACE_H */

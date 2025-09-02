@@ -25,6 +25,7 @@
 #include "commonutil.h"
 #include "lan_manager_interface.h"
 #include "lan_manager_bridge.h"
+#include "lan_manager_dml.h"
 
 /**
  * @brief Network settings map - database location for each configuration parameter
@@ -45,8 +46,6 @@ LanConfigSource lan_config_source_table[] = {
     LAN_CONFIG_SOURCE_SENTINEL
 };
 
-/** @brief Array of active network configurations loaded from database */
-LanConfig g_bridges[sizeof(lan_config_source_table)/sizeof(lan_config_source_table[0])];
 
 /**
  * @brief Loads all network settings from the database
@@ -349,23 +348,40 @@ void PopulateAllBridges()
     LanManagerInfo(("[DEBUG][PopulateAllBridges] Entered\n"));
 
     // Iterate over all bridge configuration entries
-    for (int i = 0; lan_config_source_table[i].bridgeInfo.bridgeName.param != NULL; i++) {
+    for (int i = 0; lan_config_source_table[i].bridgeInfo.bridgeName.param != NULL; i++)
+    {
+        if(i >= MAX_TABLE_ROWS)
+        {
+            LanManagerError(("[PopulateAllBridges] Exceeded max table rows (%d), stopping.\n", MAX_TABLE_ROWS));
+            break;
+        }
+
         LanManagerInfo(("[DEBUG][PopulateAllBridges] Processing bridge index %d\n", i));
-        LanConfig *cfg = &g_bridges[i];
+        LanConfig *cfg = &gDM.lanConfigs[i];
         const LanConfigSource *src = &lan_config_source_table[i];
         char param_buf[256];
         bool result = false;
 
+        /* Initialize the instance */
+        cfg->instNum = i + 1;
+        snprintf(cfg->alias, sizeof(cfg->alias), "cpe-lan-%d", i);
+        g_count++;
+
         // Read Layer 2 network index and bridge info
         int l2net_idx = -1;
         char l2net_buf[8] = {0};
-        if (src->bridgeInfo.l2net_index.param && src->bridgeInfo.l2net_index.param[0]) {
+        if (src->bridgeInfo.l2net_index.param && src->bridgeInfo.l2net_index.param[0])
+        {
             LanManagerInfo(("[DEBUG][PopulateAllBridges] Calling GetValueFromDb for l2net_index: param=%s, src=%d\n", src->bridgeInfo.l2net_index.param, src->bridgeInfo.l2net_index.src));
             result = GetValueFromDb((char*)src->bridgeInfo.l2net_index.param, l2net_buf, PARAM_STRING, src->bridgeInfo.l2net_index.src);
-            if (!result || l2net_buf[0] == '\0') {
+            if (!result || l2net_buf[0] == '\0')
+            {
                 LanManagerError(("Failed to get l2net index for bridge %d, skipping bridge. result=%d\n", i, (int)result));
+                g_count--; /* Decrement because this instance failed to populate */
                 continue;
-            } else {
+            }
+            else
+            {
                 l2net_idx = atoi(l2net_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] Got l2net_idx for bridge %d: %d (raw='%s')\n", i, l2net_idx, l2net_buf));
                 PopulateBridgeInfo(i, cfg, src, l2net_idx, param_buf);
@@ -375,12 +391,16 @@ void PopulateAllBridges()
         // Read Layer 3 network index and IP config
         int l3net_idx = -1;
         char l3net_buf[8] = {0};
-        if (src->ipConfig.l3net_index.param && src->ipConfig.l3net_index.param[0]) {
+        if (src->ipConfig.l3net_index.param && src->ipConfig.l3net_index.param[0])
+        {
             LanManagerInfo(("[DEBUG][PopulateAllBridges] Calling GetValueFromDb for l3net_index: param=%s, src=%d\n", src->ipConfig.l3net_index.param, src->ipConfig.l3net_index.src));
             result = GetValueFromDb((char*)src->ipConfig.l3net_index.param, l3net_buf, PARAM_STRING, src->ipConfig.l3net_index.src);
-            if (!result || l3net_buf[0] == '\0') {
+            if (!result || l3net_buf[0] == '\0')
+            {
                 LanManagerError(("Failed to get l3net index for bridge %d, skipping IP config. result=%d\n", i, (int)result));
-            } else {
+            }
+            else
+            {
                 l3net_idx = atoi(l3net_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] Got l3net_idx for bridge %d: %d (raw='%s')\n", i, l3net_idx, l3net_buf));
                 PopulateIpConfig(i, cfg, src, l3net_idx, param_buf);
@@ -390,12 +410,16 @@ void PopulateAllBridges()
         // Read DHCPv4 index and config
         int dhcpv4_idx = -1;
         char dhcpv4_idx_buf[8] = {0};
-        if (src->dhcpConfig.dhcpv4_index.param && src->dhcpConfig.dhcpv4_index.param[0]) {
+        if (src->dhcpConfig.dhcpv4_index.param && src->dhcpConfig.dhcpv4_index.param[0])
+        {
             LanManagerInfo(("[DEBUG][PopulateAllBridges] Calling GetValueFromDb for dhcpv4_index: param=%s, src=%d\n", src->dhcpConfig.dhcpv4_index.param, src->dhcpConfig.dhcpv4_index.src));
             result = GetValueFromDb((char*)src->dhcpConfig.dhcpv4_index.param, dhcpv4_idx_buf, PARAM_STRING, src->dhcpConfig.dhcpv4_index.src);
-            if (!result || dhcpv4_idx_buf[0] == '\0') {
+            if (!result || dhcpv4_idx_buf[0] == '\0')
+            {
                 LanManagerError(("Failed to get dhcpv4 index for bridge %d, skipping DHCP config. result=%d\n", i, (int)result));
-            } else {
+            }
+            else
+            {
                 dhcpv4_idx = atoi(dhcpv4_idx_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] dhcpv4_idx for bridge %d: %d\n", i, dhcpv4_idx));
                 PopulateDhcpConfig(i, cfg, src, dhcpv4_idx, param_buf);

@@ -32,7 +32,7 @@
         .bridgeInfo = { \
             .networkBridgeType = { "", PSM_DB }, \
             .userBridgeCategory = { "", PSM_DB }, \
-            .alias = { "", PSM_DB }, \
+            .alias = { "dmsb.l2net.%d.Alias", PSM_DB }, \
             .bridgeName = { "dmsb.l2net.%d.Name", PSM_DB }, \
             .l2net_index = { "dmsb.MultiLAN.PrimaryLAN_l2net", PSM_DB }, \
             .numOfIfaces = { "", PSM_DB }, \
@@ -67,8 +67,8 @@
             .Ipv6Prefix = { "", PSM_DB }, \
             .StateFull = { "", PSM_DB }, \
             .StateLess = { "", PSM_DB }, \
-            .Dhcpv6_Start_Addr = { "", PSM_DB }, \
-            .Dhcpv6_End_Addr = { "", PSM_DB } \
+            .Dhcpv6_Start_Addr = { "dhcpv6spool00::PrefixRangeBegin", SYSCFG_DB }, \
+            .Dhcpv6_End_Addr = { "dhcpv6spool00::PrefixRangeEnd", SYSCFG_DB } \
         }, \
         .firewallConfig = { \
             .Firewall_Level = { "firewall_level", SYSCFG_DB }, \
@@ -88,7 +88,7 @@
         .bridgeInfo = { \
             .networkBridgeType = { "", PSM_DB }, \
             .userBridgeCategory = { "", PSM_DB }, \
-            .alias = { "", PSM_DB }, \
+            .alias = { "dmsb.l2net.%d.Alias", PSM_DB }, \
             .bridgeName = { "dmsb.l2net.%d.Name", PSM_DB }, \
             .l2net_index = { "dmsb.MultiLAN.HomeSecurity_l2net", PSM_DB }, \
             .numOfIfaces = { "", PSM_DB }, \
