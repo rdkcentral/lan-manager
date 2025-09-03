@@ -44,7 +44,7 @@ void getTableRowID(char const* name, int start, TableRowID* rowID)
     LanManagerDebug(("%s: called with name=%s component=%d\n", __FUNCTION__, name, component));
 
     rowID->type = TableRowIDType_Unknown;
-    rowID->alias = NULL;
+    rowID->alias[0] = '\0';
     rowID->instNum = 0;
 
     // In rbus, the path passed to a handler for a table item looks like:
@@ -96,14 +96,15 @@ void getTableRowID(char const* name, int start, TableRowID* rowID)
         alias_end = strchr(alias_buffer, ']');
         if(alias_end)
             *alias_end = 0;
-        rowID->alias = alias_buffer;
+        strncpy(rowID->alias, alias_buffer, sizeof(rowID->alias) -1);
+        rowID->alias[sizeof(rowID->alias)-1] = '\0';
         LanManagerDebug(("%s: parsed alias=%s\n", __FUNCTION__, rowID->alias));
     }
     else
     {
         rowID->type = TableRowIDType_InstNum;
         rowID->instNum = atoi(buffer);
-        rowID->alias = NULL;
+        rowID->alias[0] = '\0';
         LanManagerDebug(("%s: parsed instNum=%d\n", __FUNCTION__, rowID->instNum));
     }
 }
