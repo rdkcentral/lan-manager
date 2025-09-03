@@ -398,7 +398,6 @@ static void *LNM_sysevent_threadfunc(void *data)
 static int Lan_Manager_Init()
 {
     LanManagerInfo((" starting lan manager init \n"));
-    PopulateAllBridges();
     lan_manager_register_dml();
     sysevent_fd = sysevent_open("127.0.0.1", SE_SERVER_WELL_KNOWN_PORT, SE_VERSION, "lan_manager", &sysevent_token);
     LanManagerInfo((" sysevent_fd %d \n", sysevent_fd));
@@ -472,6 +471,7 @@ int main(int argc, char *argv[])
     t2_init("lanmanager");
     LanManagerLogInit();
     Lan_Manager_Init();
+    PopulateAllBridges();
     LanManagerInfo(("wait in loop \n"));
     while (1)
     {

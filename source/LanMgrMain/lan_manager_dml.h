@@ -5,6 +5,8 @@
 
 #define MAX_TABLE_ROWS 16
 
+#include "lan_manager_interface.h"
+
 typedef enum
 {
     TableRowIDType_InstNum,
@@ -16,7 +18,7 @@ typedef struct
 {
     TableRowIDType type;
     uint32_t instNum;
-    char* alias;
+    char alias[ALIAS_MAX_LEN];
 } TableRowID;
 
 typedef struct DataModel

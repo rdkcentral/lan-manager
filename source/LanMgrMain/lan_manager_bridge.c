@@ -26,6 +26,7 @@
 #include "lan_manager_interface.h"
 #include "lan_manager_bridge.h"
 #include "lan_manager_dml.h"
+#include "lanmgr_communication_apis.h"
 
 /**
  * @brief Network settings map - database location for each configuration parameter
@@ -363,10 +364,9 @@ void PopulateAllBridges()
         bool result = false;
 
         /* Initialize the instance */
-        cfg->instNum = i + 1;
+        cfg->instNum = 0; /* Let rbus assign */
         snprintf(cfg->alias, sizeof(cfg->alias), "cpe-lan-%d", i);
-        g_count++;
-
+        
         // Read Layer 2 network index and bridge info
         int l2net_idx = -1;
         char l2net_buf[8] = {0};
@@ -437,5 +437,18 @@ void PopulateAllBridges()
 
         // Read IGD config
         PopulateIgdConfig(i, cfg, src, param_buf);
+
+        /* Now that the config is populated, register it with rbus */
+        uint32_t assignedInstNum = 0;
+        rbusError_t ret = rbusTable_addRow(rbus_handle, "Device.LanManager.LanConfig.", cfg->alias, &assignedInstNum);
+        if(ret == RBUS_ERROR_SUCCESS)
+        {
+            LanManagerInfo(("[PopulateAllBridges] Successfully added row for %s, instance number %u\n", cfg->alias, assignedInstNum));
+            /* The addRow handler already increments g_count and sets instNum, so we don't need to do it here. */
+        }
+        else
+        {
+            LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for alias %s with error %d\n", cfg->alias, ret));
+        }
     }
 }
