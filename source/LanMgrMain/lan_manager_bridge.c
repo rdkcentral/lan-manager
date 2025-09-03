@@ -89,13 +89,8 @@ static void PopulateBridgeInfo(int i, LanConfig *cfg, const LanConfigSource *src
         result = GetValueFromDb(param_buf, cfg->bridgeInfo.alias, PARAM_STRING, src->bridgeInfo.alias.src);
         LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got alias for bridge %d: '%s'\n", i, cfg->bridgeInfo.alias));
     }
-    // Read numOfIfaces
-    if (src->bridgeInfo.numOfIfaces.param) {
-        snprintf(param_buf, 256, src->bridgeInfo.numOfIfaces.param, l2net_idx);
-        LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Calling GetValueFromDb for numOfIfaces: param_buf=%s, src=%d\n", param_buf, src->bridgeInfo.numOfIfaces.src));
-        result = GetValueFromDb(param_buf, &cfg->numOfIfaces, PARAM_INT, src->bridgeInfo.numOfIfaces.src);
-        LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got numOfIfaces for bridge %d: %d\n", i, cfg->numOfIfaces));
-    }
+    // Initialize numOfIfaces to 0; increment as we populate interfaces
+    cfg->numOfIfaces = 0;
     // Read status
     if (src->bridgeInfo.status.param) {
         snprintf(param_buf, 256, src->bridgeInfo.status.param, l2net_idx);
@@ -114,6 +109,7 @@ static void PopulateBridgeInfo(int i, LanConfig *cfg, const LanConfigSource *src
                 LanManagerError(("Failed to get interfaces for bridge %d, iface %d. result=%d\n", i, j, (int)result));
             } else {
                 LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got interfaces for bridge %d, iface %d: '%s'\n", i, j, cfg->ifaces[j].Interfaces));
+                cfg->numOfIfaces++;
             }
         }
         // Read InfType
