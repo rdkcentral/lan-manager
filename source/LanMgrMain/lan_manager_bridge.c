@@ -444,7 +444,27 @@ void PopulateAllBridges()
         if(ret == RBUS_ERROR_SUCCESS)
         {
             LanManagerInfo(("[PopulateAllBridges] Successfully added row for %s, instance number %u\n", cfg->alias, assignedInstNum));
-            /* The addRow handler already increments g_count and sets instNum, so we don't need to do it here. */
+
+            // Add the interfaces for this bridge to the Iface table
+            for (int j = 0; j < cfg->numOfIfaces; ++j)
+            {
+                if (cfg->ifaces[j].Interfaces[0] != '\0')
+                {
+                    char ifaceTableName[256];
+                    snprintf(ifaceTableName, sizeof(ifaceTableName), "Device.LanManager.LanConfig.%u.Iface.", assignedInstNum);
+
+                    uint32_t assignedIfaceInstNum = 0;
+                    rbusError_t iface_ret = rbusTable_addRow(rbus_handle, ifaceTableName, NULL, &assignedIfaceInstNum);
+                    if(iface_ret == RBUS_ERROR_SUCCESS)
+                    {
+                        LanManagerInfo(("[PopulateAllBridges] Successfully added Iface row for %s, instance number %u\n", ifaceTableName, assignedIfaceInstNum));
+                    }
+                    else
+                    {
+                        LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for Iface table %s with error %d\n", ifaceTableName, iface_ret));
+                    }
+                }
+            }
         }
         else
         {
