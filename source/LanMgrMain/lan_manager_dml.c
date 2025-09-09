@@ -721,7 +721,23 @@ rbusError_t eventSubHandler(rbusHandle_t handle, rbusEventSubAction_t action, co
     return RBUS_ERROR_SUCCESS;
 }
 
-rbusDataElement_t dataElements[] = {
+rbusError_t getLanConfigHandler(rbusHandle_t handle, char const* methodName, rbusObject_t inParams, rbusObject_t outParams, rbusMethodAsyncHandle_t asyncHandle)
+{
+    (void)handle; (void)methodName; (void)inParams; (void)asyncHandle;
+    size_t total_size = sizeof(int) + g_count * sizeof(LanConfig);
+    uint8_t* buffer = malloc(total_size);
+    memcpy(buffer, &g_count, sizeof(int));
+    memcpy(buffer + sizeof(int), gDM.lanConfigs, g_count * sizeof(LanConfig));
+    rbusValue_t value;
+    rbusValue_Init(&value);
+    rbusValue_SetBytes(value, buffer, total_size);
+    rbusObject_SetValue(outParams, "value", value);
+    rbusValue_Release(value);
+    free(buffer);
+    return RBUS_ERROR_SUCCESS;
+}
+
+static rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandlerLanConfig, tableRemoveRowHandlerLanConfig, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Alias", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.BridgeName", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
@@ -750,7 +766,8 @@ rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandlerIface,  tableRemoveRowHandlerIface, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.Interface", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.VlanId", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
-    {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}}
+    {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
+    {"Device.LanManager.LanConfig.Copy", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, getLanConfigHandler}},
 };
 
 extern rbusHandle_t rbus_handle;

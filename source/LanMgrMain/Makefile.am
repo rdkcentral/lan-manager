@@ -29,3 +29,9 @@ AM_LDFLAGS = -lsysevent -lsyscfg -lsecure_wrapper -ltelemetry_msgsender
 AM_LDFLAGS = $(DBUS_LIBS)
 lan_manager_LDFLAGS = -lsysevent -lsyscfg -lrbus -lcommonutil
 lan_manager_SOURCES = lanmgr_log.c lan_manager.c lan_manager_bridge.c lanmgr_communication_apis.c lan_manager_dml.c
+
+lib_LTLIBRARIES = liblanconfig.la
+liblanconfig_la_SOURCES = lan_manager_interface.c
+liblanconfig_la_LDFLAGS = -version-info 1:0:0 -no-undefined -lrbus
+pkginclude_HEADERS = lan_manager_interface.h
+pkgincludedir = $(includedir)/lanmanager

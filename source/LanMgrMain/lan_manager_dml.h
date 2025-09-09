@@ -23,8 +23,8 @@ typedef struct
 
 typedef struct DataModel
 {
-    LanConfig lanConfigs[MAX_TABLE_ROWS];
     uint32_t lanConfigInstNum;
+    LanConfig lanConfigs[MAX_TABLE_ROWS];
 } DataModel;
 
 extern DataModel gDM;
