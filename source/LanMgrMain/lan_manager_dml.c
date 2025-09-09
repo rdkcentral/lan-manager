@@ -767,7 +767,7 @@ static rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.Interface", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.VlanId", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
-    {"Device.LanManager.LanConfigCopy()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, getLanConfigHandler}},
+    {"Device.LanManager.LanConfigCopy()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, getLanConfigHandler}}
 };
 
 extern rbusHandle_t rbus_handle;

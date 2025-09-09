@@ -34,7 +34,7 @@ bool GetLanConfigFromProvider(LanConfig *configs, int *count)
     if(rc != RBUS_ERROR_SUCCESS)
         return false;
 
-    rc = rbusMethod_Invoke(handle, "Device.LanManager.LanConfig.Copy", inParams, &outParams);
+    rc = rbusMethod_Invoke(handle, "Device.LanManager.LanConfigCopy", inParams, &outParams);
     if(rc == RBUS_ERROR_SUCCESS && outParams)
     {
         rbusValue_t value = rbusObject_GetValue(outParams, "value");
