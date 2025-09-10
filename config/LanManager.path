@@ -1,0 +1,9 @@
+[Unit]
+Description=Trigger LanManager when /tmp/psm_initialized appears
+
+[Path]
+PathExists=/tmp/psm_initialized
+
+[Install]
+WantedBy=multi-user.target
+
