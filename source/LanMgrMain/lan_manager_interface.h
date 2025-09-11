@@ -259,4 +259,6 @@ typedef struct {
     char alias[ALIAS_MAX_LEN];
 } LanConfig;
 
+bool GetLanConfigFromProvider(LanConfig *configs, int *count);
+
 #endif /* LAN_MANAGER_INTERFACE_H */
