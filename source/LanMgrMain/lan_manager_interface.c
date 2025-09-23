@@ -25,7 +25,7 @@
 #include "lan_manager_interface.h"
 #include "lanmgr_log.h"
 
-void printDhcpConfig (LanConfig *configs, int count)
+void printBridgeConfig (LanConfig *configs, int count)
 {
     for (int iCount = 0; iCount < count; iCount++)
     {
@@ -67,7 +67,7 @@ bool GetLanConfigFromProvider(LanConfig *configs, int *count)
                     {
                         memcpy(configs, bytes + sizeof(int), n * sizeof(LanConfig));
                         *count = n;
-                        printDhcpConfig (configs, *count);
+                        printBridgeConfig (configs, *count);
                         rbusObject_Release(outParams);
                         rbus_close(handle);
                         return true;
