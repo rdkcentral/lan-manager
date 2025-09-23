@@ -23,21 +23,7 @@
 #include <string.h>
 #include <rbus.h>
 #include "lan_manager_interface.h"
-#include "lanmgr_log.h"
 
-void printBridgeConfig (LanConfig *configs, int count)
-{
-    for (int iCount = 0; iCount < count; iCount++)
-    {
-        LanManagerInfo(("Interface %d Configurations of %d\n", iCount, count));
-        LanManagerInfo(("Interface Enabled : %s\n", configs[iCount].ipConfig.Ip_Enable ? "true" : "false"));
-        LanManagerInfo(("Interface Name : %s\n", configs[iCount].bridgeInfo.bridgeName));
-        LanManagerInfo(("Lease Time : %d\n", configs[iCount].dhcpConfig.Dhcpv4_Lease_Time));
-        LanManagerInfo(("Subnet Mask : %s\n", configs[iCount].ipConfig.IpSubNet));
-        LanManagerInfo(("Start Address : %s\n", configs[iCount].dhcpConfig.Dhcpv4_Start_Addr));
-        LanManagerInfo(("End Address : %s\n", configs[iCount].dhcpConfig.Dhcpv4_End_Addr));
-    }
-}
 
 bool GetLanConfigFromProvider(LanConfig *configs, int *count)
 {
@@ -67,7 +53,6 @@ bool GetLanConfigFromProvider(LanConfig *configs, int *count)
                     {
                         memcpy(configs, bytes + sizeof(int), n * sizeof(LanConfig));
                         *count = n;
-                        printBridgeConfig (configs, *count);
                         rbusObject_Release(outParams);
                         rbus_close(handle);
                         return true;
