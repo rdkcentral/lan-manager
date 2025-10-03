@@ -9,6 +9,7 @@ Environment="LOG4C_RCPATH=/etc"
 EnvironmentFile=/etc/device.properties
 ExecStartPre=/bin/sh -c '(/usr/ccsp/utopiaInitCheck.sh)'
 ExecStart=/usr/bin/lan_manager
+ExecStart=sh -c '/usr/bin/lan_netlinkifmonitor &'
 ExecStop=/bin/sh -c 'echo "`date`: Stopping/Restarting LanManager" >> ${PROCESS_RESTART_LOG}'
 Restart=always
 

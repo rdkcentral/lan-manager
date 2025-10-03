@@ -1,1 +1,1 @@
-SUBDIRS =  LanMgrMain
+SUBDIRS =  LanMgrMain LanMgrTest
