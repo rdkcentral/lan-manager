@@ -58,6 +58,7 @@
 #include "lan_manager_bridge.h"
 #include "lanmgr_communication_apis.h"
 #include "lan_manager_dml.h"
+#include "lan_managerds.h"
 
 //Added for lxcserver thread function
 #if defined(_PLATFORM_RASPBERRYPI_)
@@ -471,12 +472,14 @@ int main(int argc, char *argv[])
     t2_init("lanmanager");
     LanManagerLogInit();
     Lan_Manager_Init();
+    LanConfigDataStoreInit();
     PopulateAllBridges();
     LanManagerInfo(("wait in loop \n"));
     while (1)
     {
         sleep(1);
     }
+    LanConfigDataStoreCleanup();
     lanManagerBusClose();
     if( findProcessId(argv[0]) > 0 )
     {

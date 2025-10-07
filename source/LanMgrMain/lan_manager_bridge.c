@@ -27,6 +27,61 @@
 #include "lan_manager_bridge.h"
 #include "lan_manager_dml.h"
 #include "lanmgr_communication_apis.h"
+#include "lan_managerdb.h" /* Persistence API header */
+
+/*
+ * PersistLanConfig: Writes current LanConfig into persistent datastore via
+ * individual SetLanConfig* APIs. Failures are logged but non-fatal so that
+ * partial persistence does not block remaining sections.
+ */
+static void PersistLanConfig(const LanConfig *cfg)
+{
+    if(!cfg) return;
+    const char *alias = cfg->bridgeInfo.alias;
+    LM_Status st;
+
+    st = SetLanConfigBridgeInfo(alias, &cfg->bridgeInfo);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigBridgeInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigInterfaceCountInfo(alias, &cfg->numOfIfaces);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigInterfaceCountInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigInterfaceInfo(alias, cfg->ifaces);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigInterfaceInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigDhcpInfo(alias, &cfg->dhcpConfig);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigDhcpInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigIPConfigInfo(alias, &cfg->ipConfig);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigIPConfigInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigDhcpv6ConfigInfo(alias, &cfg->dhcpv6Config);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigDhcpv6ConfigInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigFirewallConfigInfo(alias, &cfg->firewallConfig);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigFirewallConfigInfo failed (%d) for %s\n", st, alias));
+
+    st = SetLanConfigSecurityConfigInfo(alias, &cfg->securityConfig);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigSecurityConfigInfo failed (%d) for %s\n", st, alias));
+
+#ifdef ENABLE_IGD_DB_PERSISTENCE
+    st = SetLanConfigIGDEnableConfigInfo(alias, &cfg->IGD_Enable);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigIGDEnableConfigInfo failed (%d) for %s\n", st, alias));
+#endif
+
+    st = SetLanConfigStatusConfigInfo(alias, &cfg->status);
+    if(st != LM_SUCCESS)
+        LanManagerError(("PersistLanConfig: SetLanConfigStatusConfigInfo failed (%d) for %s\n", st, alias));
+}
 
 /**
  * @brief Network settings map - database location for each configuration parameter
@@ -466,5 +521,8 @@ void PopulateAllBridges()
         {
             LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for alias %s with error %d\n", cfg->alias, ret));
         }
+
+        /* Persist populated configuration regardless of rbus add outcome */
+        PersistLanConfig(cfg);
     }
 }
