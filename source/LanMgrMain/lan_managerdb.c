@@ -20,11 +20,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "lan_manager.h"
 #include "lan_managerds.h"
-#include "lm_bridge_util.h"
-
-#define LM_TRACE printf  //To be replaced with actual logging infra
+#include "lan_manager_interface.h"
+#include "lan_manager_dml.h"
+#include "lanmgr_log.h"
 
 /******************************************************************************
  *SetLanConfigBridgeInfo: API to set the main bridge information
@@ -49,7 +48,7 @@ LM_Status SetLanConfigBridgeInfo(const char *BrgAlias, const BridgeInfo *BrgInfo
 
     if((BrgAlias==NULL)||(BrgInfo==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -106,7 +105,7 @@ LM_Status GetLanConfigBridgeInfo(const char *BrgAlias, BridgeInfo *BrgInfo)
 
     if((BrgAlias==NULL)||(BrgInfo==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -123,7 +122,7 @@ LM_Status GetLanConfigBridgeInfo(const char *BrgAlias, BridgeInfo *BrgInfo)
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -147,7 +146,7 @@ LM_Status RemoveLanConfigEntry(const char *BrgAlias)
 
     if(BrgAlias==NULL)
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -161,7 +160,7 @@ LM_Status RemoveLanConfigEntry(const char *BrgAlias)
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -186,7 +185,7 @@ LM_Status SetLanConfigInterfaceCountInfo(const char *BrgAlias, const int *BrgIfa
 
     if((BrgAlias==NULL)||(BrgIfaceCount==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -200,7 +199,7 @@ LM_Status SetLanConfigInterfaceCountInfo(const char *BrgAlias, const int *BrgIfa
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -225,7 +224,7 @@ LM_Status GetLanConfigInterfaceCountInfo(const char *BrgAlias, int *BrgIfaceCoun
 
     if((BrgAlias==NULL)||(BrgIfaceCount==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -236,7 +235,7 @@ LM_Status GetLanConfigInterfaceCountInfo(const char *BrgAlias, int *BrgIfaceCoun
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -265,13 +264,14 @@ LM_Status SetLanConfigInterfaceInfo(const char *BrgAlias, const Iface *BrgIface)
 
     if((BrgAlias==NULL)||(BrgIface==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        memcpy(LanDBData.ifaces,BrgIface,sizeof(Iface)*MAX_IFACE_COUNT);
+    /* Copy interface list into LanConfig; struct member is 'interfaces' */
+    memcpy(LanDBData.interfaces,BrgIface,sizeof(Iface)*MAX_IFACE_COUNT);
 
         if(LM_SUCCESS == LanConfigDataStoreAdd(&LanDBData))
         {
@@ -279,7 +279,7 @@ LM_Status SetLanConfigInterfaceInfo(const char *BrgAlias, const Iface *BrgIface)
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -307,18 +307,18 @@ LM_Status GetLanConfigInterfaceInfo(const char *BrgAlias, Iface *BrgIface)
 
     if((BrgAlias==NULL)||(BrgIface==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        memcpy(BrgIface,LanDBData.ifaces,sizeof(Iface)*MAX_IFACE_COUNT);
+        memcpy(BrgIface,LanDBData.interfaces,sizeof(Iface)*MAX_IFACE_COUNT);
 
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -344,16 +344,14 @@ LM_Status SetLanConfigDhcpInfo(const char *BrgAlias, const DHCPConfig *BrgDhcpCo
 
     if((BrgAlias==NULL)||(BrgDhcpConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        strcpy(LanDBData.dhcpConfig.Dhcpv4_Start_Addr,BrgDhcpConfig->Dhcpv4_Start_Addr);
-        strcpy(LanDBData.dhcpConfig.Dhcpv4_End_Addr,BrgDhcpConfig->Dhcpv4_End_Addr);
-        LanDBData.dhcpConfig.Dhcpv4_Enable=BrgDhcpConfig->Dhcpv4_Enable;
-        LanDBData.dhcpConfig.Dhcpv4_Lease_Time=BrgDhcpConfig->Dhcpv4_Lease_Time;
+        /* Update nested DHCPv4 configuration (only dhcpv4 portion of passed composite config) */
+        LanDBData.dhcpConfig.dhcpv4Config = BrgDhcpConfig->dhcpv4Config;
 
         if(LM_SUCCESS == LanConfigDataStoreAdd(&LanDBData))
         {
@@ -361,7 +359,7 @@ LM_Status SetLanConfigDhcpInfo(const char *BrgAlias, const DHCPConfig *BrgDhcpCo
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -387,21 +385,18 @@ LM_Status GetLanConfigDhcpInfo(const char *BrgAlias, DHCPConfig *BrgDhcpConfig)
 
     if((BrgAlias==NULL)||(BrgDhcpConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        strcpy(BrgDhcpConfig->Dhcpv4_Start_Addr,LanDBData.dhcpConfig.Dhcpv4_Start_Addr);
-        strcpy(BrgDhcpConfig->Dhcpv4_End_Addr,LanDBData.dhcpConfig.Dhcpv4_End_Addr);
-        BrgDhcpConfig->Dhcpv4_Enable=LanDBData.dhcpConfig.Dhcpv4_Enable;
-        BrgDhcpConfig->Dhcpv4_Lease_Time=LanDBData.dhcpConfig.Dhcpv4_Lease_Time;
+        BrgDhcpConfig->dhcpv4Config = LanDBData.dhcpConfig.dhcpv4Config;
 
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -427,7 +422,7 @@ LM_Status SetLanConfigIPConfigInfo(const char *BrgAlias, const IPConfig *BrgIPCo
 
     if((BrgAlias==NULL)||(BrgIPConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -444,7 +439,7 @@ LM_Status SetLanConfigIPConfigInfo(const char *BrgAlias, const IPConfig *BrgIPCo
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -470,7 +465,7 @@ LM_Status GetLanConfigIPConfigInfo(const char *BrgAlias, IPConfig *BrgIPConfig)
 
     if((BrgAlias==NULL)||(BrgIPConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s:Invalid Parameters are passed\n",__FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -484,7 +479,7 @@ LM_Status GetLanConfigIPConfigInfo(const char *BrgAlias, IPConfig *BrgIPConfig)
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -503,23 +498,23 @@ LM_Status GetLanConfigIPConfigInfo(const char *BrgAlias, IPConfig *BrgIPConfig)
  * parameter passed to it. Freeing dynamically allocated memory for parameters
  * is the responsibility of the calling function.
 **********************************************************************************************/
-LM_Status SetLanConfigDhcpv6ConfigInfo(const char *BrgAlias, const DHCPv6Config *BrgDhcpv6Config)
+LM_Status SetLanConfigDhcpv6ConfigInfo(const char *BrgAlias, const DHCPV6Config *BrgDhcpv6Config)
 {
     LanConfig LanDBData;
 
     if((BrgAlias==NULL)||(BrgDhcpv6Config==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        strcpy(LanDBData.dhcpv6Config.Ipv6Prefix,BrgDhcpv6Config->Ipv6Prefix);
-        strcpy(LanDBData.dhcpv6Config.Dhcpv6_Start_Addr,BrgDhcpv6Config->Dhcpv6_Start_Addr);
-        strcpy(LanDBData.dhcpv6Config.Dhcpv6_End_Addr,BrgDhcpv6Config->Dhcpv6_End_Addr);
-        LanDBData.dhcpv6Config.StateFull=BrgDhcpv6Config->StateFull;
-        LanDBData.dhcpv6Config.StateLess=BrgDhcpv6Config->StateLess;
+    strcpy(LanDBData.dhcpConfig.dhcpv6Config.Ipv6Prefix,BrgDhcpv6Config->Ipv6Prefix);
+    strcpy(LanDBData.dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr,BrgDhcpv6Config->Dhcpv6_Start_Addr);
+    strcpy(LanDBData.dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr,BrgDhcpv6Config->Dhcpv6_End_Addr);
+    LanDBData.dhcpConfig.dhcpv6Config.StateFull=BrgDhcpv6Config->StateFull;
+    LanDBData.dhcpConfig.dhcpv6Config.StateLess=BrgDhcpv6Config->StateLess;
 
         if(LM_SUCCESS == LanConfigDataStoreAdd(&LanDBData))
         {
@@ -527,7 +522,7 @@ LM_Status SetLanConfigDhcpv6ConfigInfo(const char *BrgAlias, const DHCPv6Config 
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -552,22 +547,22 @@ LM_Status GetLanConfigDhcpv6ConfigInfo(const char *BrgAlias, DHCPV6Config *BrgDh
 
     if((BrgAlias==NULL)||(BrgDhcpv6Config==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
     if(LM_SUCCESS == LanConfigDataStoreGet(BrgAlias,&LanDBData))
     {
-        strcpy(BrgDhcpv6Config->Ipv6Prefix,LanDBData.dhcpv6Config.Ipv6Prefix);
-        strcpy(BrgDhcpv6Config->Dhcpv6_Start_Addr,LanDBData.dhcpv6Config.Dhcpv6_Start_Addr);
-        strcpy(BrgDhcpv6Config->Dhcpv6_End_Addr,LanDBData.dhcpv6Config.Dhcpv6_End_Addr);
-        BrgDhcpv6Config->StateFull=LanDBData.dhcpv6Config.StateFull;
-        BrgDhcpv6Config->StateLess=LanDBData.dhcpv6Config.StateLess;
+    strcpy(BrgDhcpv6Config->Ipv6Prefix,LanDBData.dhcpConfig.dhcpv6Config.Ipv6Prefix);
+    strcpy(BrgDhcpv6Config->Dhcpv6_Start_Addr,LanDBData.dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr);
+    strcpy(BrgDhcpv6Config->Dhcpv6_End_Addr,LanDBData.dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr);
+    BrgDhcpv6Config->StateFull=LanDBData.dhcpConfig.dhcpv6Config.StateFull;
+    BrgDhcpv6Config->StateLess=LanDBData.dhcpConfig.dhcpv6Config.StateLess;
 
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -592,7 +587,7 @@ LM_Status SetLanConfigFirewallConfigInfo(const char *BrgAlias, const FirewallCon
 
     if((BrgAlias==NULL)||(BrgFirewallConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -607,7 +602,7 @@ LM_Status SetLanConfigFirewallConfigInfo(const char *BrgAlias, const FirewallCon
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -632,7 +627,7 @@ LM_Status GetLanConfigFirewallConfigInfo(const char *BrgAlias, FirewallConfig *B
 
     if((BrgAlias==NULL)||(BrgFirewallConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -644,7 +639,7 @@ LM_Status GetLanConfigFirewallConfigInfo(const char *BrgAlias, FirewallConfig *B
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -669,7 +664,7 @@ LM_Status SetLanConfigSecurityConfigInfo(const char *BrgAlias, const SecurityCon
 
     if((BrgAlias==NULL)||(BrgSecurityConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -707,7 +702,7 @@ LM_Status GetLanConfigSecurityConfigInfo(const char *BrgAlias, SecurityConfig *B
 
     if((BrgAlias==NULL)||(BrgSecurityConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -718,7 +713,7 @@ LM_Status GetLanConfigSecurityConfigInfo(const char *BrgAlias, SecurityConfig *B
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 #if 0
@@ -818,7 +813,7 @@ LM_Status SetLanConfigStatusConfigInfo(const char *BrgAlias, const BridgeStatus 
 
     if((BrgAlias==NULL)||(BrgStatusConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -832,7 +827,7 @@ LM_Status SetLanConfigStatusConfigInfo(const char *BrgAlias, const BridgeStatus 
         }
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -857,7 +852,7 @@ LM_Status GetLanConfigStatusConfigInfo(const char *BrgAlias, BridgeStatus *BrgSt
 
     if((BrgAlias==NULL)||(BrgStatusConfig==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+    LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -868,7 +863,7 @@ LM_Status GetLanConfigStatusConfigInfo(const char *BrgAlias, BridgeStatus *BrgSt
         return LM_SUCCESS;
     }
 
-    LM_TRACE("\r\n%s:Returned failure\r\n",__FUNCTION__);
+    LanManagerError(("%s: Returned failure\n", __FUNCTION__));
     return LM_FAILURE;
 }
 
@@ -895,14 +890,14 @@ LM_Status LanConfigCreateBridges()
         {
             printf("\r\n%s:Alias:%s\r\n",__FUNCTION__,LanDBFull[i].bridgeInfo.alias);
         }
-
-        if(0 == CreateLanBridges(LanDBFull, numEntries))
+/**
+        if(0 != CreateLanBridges(LanDBFull, numEntries))
         {
-            return LM_SUCCESS;
+                return LM_FAILURE;
         }
-
+*/
     }
-    return LM_FAILURE;
+    return LM_SUCCESS;
 }
 
 /*****************************************************************************************************
@@ -928,12 +923,12 @@ LM_Status LanConfigDeleteBridges()
         {
             printf("\r\n%s:Alias:%s\r\n",__FUNCTION__,LanDBFull[i].bridgeInfo.alias);
         }
-
-        if(0 == DeleteLanBridges(LanDBFull, numEntries))
+/**
+        if(0 != DeleteLanBridges(LanDBFull, numEntries))
         {
-            return LM_SUCCESS;
+            return LM_FAILURE;
         }
-
+*/
     }
-    return LM_FAILURE;
+    return LM_SUCCESS;
 }

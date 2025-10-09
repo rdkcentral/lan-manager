@@ -146,8 +146,8 @@ void printDataModel()
 
             for(j = 0; j < lanConfig->numOfIfaces; ++j)
             {
-                Iface* iface = &lanConfig->ifaces[j];
-                LanManagerDebug(("%s: \t%d: InfType=%d, Interface=%s, vlanId=%d\n", __FUNCTION__, j, iface->InfType, iface->Interfaces, iface->vlanId));
+                Iface* iface = &lanConfig->interfaces[j];
+                LanManagerDebug(("%s: \t%d: InfType=%d, Interface=%s, vlanId=%d\n", __FUNCTION__, j, iface->InfType, iface->interfaceName, iface->vlanId));
             }
         }
     }
@@ -191,7 +191,7 @@ Iface* findIface(char const* rowName, LanConfig** lanConfig)
 
     for(i = 0; i < (*lanConfig)->numOfIfaces; ++i)
     {
-        Iface* iface = &(*lanConfig)->ifaces[i];
+        Iface* iface = &(*lanConfig)->interfaces[i];
 
         // Assuming instance number for ifaces is the index
         if(compareTableRowID(&rowID, i + 1, NULL)) // Assuming ifaces don't have aliases
@@ -275,7 +275,7 @@ rbusError_t tableAddRowHandlerIface(rbusHandle_t handle, char const* tableName, 
     {
         if(lanConfig->numOfIfaces < MAX_IFACE_COUNT)
         {
-            Iface* iface = &lanConfig->ifaces[lanConfig->numOfIfaces];
+            Iface* iface = &lanConfig->interfaces[lanConfig->numOfIfaces];
             memset(iface, 0, sizeof(Iface));
             *instNum = lanConfig->numOfIfaces + 1;
             lanConfig->numOfIfaces++;
@@ -379,39 +379,39 @@ rbusError_t getHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     }
     else if(propertyNameEquals(name, "Dhcpv4_Enable"))
     {
-        rbusValue_SetBoolean(value, lanConfig->dhcpConfig.Dhcpv4_Enable);
+        rbusValue_SetBoolean(value, lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Enable);
     }
     else if(propertyNameEquals(name, "Dhcpv4_Start_Addr"))
     {
-        rbusValue_SetString(value, lanConfig->dhcpConfig.Dhcpv4_Start_Addr);
+        rbusValue_SetString(value, lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr);
     }
     else if(propertyNameEquals(name, "Dhcpv4_End_Addr"))
     {
-        rbusValue_SetString(value, lanConfig->dhcpConfig.Dhcpv4_End_Addr);
+        rbusValue_SetString(value, lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr);
     }
     else if(propertyNameEquals(name, "Dhcpv4_Lease_Time"))
     {
-        rbusValue_SetInt32(value, lanConfig->dhcpConfig.Dhcpv4_Lease_Time);
+        rbusValue_SetInt32(value, lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time);
     }
     else if(propertyNameEquals(name, "Ipv6Prefix"))
     {
-        rbusValue_SetString(value, lanConfig->dhcpv6Config.Ipv6Prefix);
+        rbusValue_SetString(value, lanConfig->dhcpConfig.dhcpv6Config.Ipv6Prefix);
     }
     else if(propertyNameEquals(name, "StateFull"))
     {
-        rbusValue_SetBoolean(value, lanConfig->dhcpv6Config.StateFull);
+        rbusValue_SetBoolean(value, lanConfig->dhcpConfig.dhcpv6Config.StateFull);
     }
     else if(propertyNameEquals(name, "StateLess"))
     {
-        rbusValue_SetBoolean(value, lanConfig->dhcpv6Config.StateLess);
+        rbusValue_SetBoolean(value, lanConfig->dhcpConfig.dhcpv6Config.StateLess);
     }
     else if(propertyNameEquals(name, "Dhcpv6_Start_Addr"))
     {
-        rbusValue_SetString(value, lanConfig->dhcpv6Config.Dhcpv6_Start_Addr);
+        rbusValue_SetString(value, lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr);
     }
     else if(propertyNameEquals(name, "Dhcpv6_End_Addr"))
     {
-        rbusValue_SetString(value, lanConfig->dhcpv6Config.Dhcpv6_End_Addr);
+        rbusValue_SetString(value, lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr);
     }
     else if(propertyNameEquals(name, "Firewall_Level"))
     {
@@ -427,7 +427,7 @@ rbusError_t getHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     }
     else if(propertyNameEquals(name, "IGD_Enable"))
     {
-        rbusValue_SetBoolean(value, lanConfig->IGD_Enable);
+        rbusValue_SetBoolean(value, lanConfig->bridgeInfo.igdEnable);
     }
     else if(propertyNameEquals(name, "Status"))
     {
@@ -521,55 +521,55 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     {
         bool b = rbusValue_GetBoolean(value);
         LanManagerDebug(("%s: setting Dhcpv4_Enable to '%d'\n", __FUNCTION__, b));
-        lanConfig->dhcpConfig.Dhcpv4_Enable = b;
+        lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Enable = b;
     }
     else if(propertyNameEquals(name, "Dhcpv4_Start_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Dhcpv4_Start_Addr to '%s'\n", __FUNCTION__, str));
-        strncpy(lanConfig->dhcpConfig.Dhcpv4_Start_Addr, str, MAX_IP_LEN-1);
+        strncpy(lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr, str, MAX_IP_LEN-1);
     }
     else if(propertyNameEquals(name, "Dhcpv4_End_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Dhcpv4_End_Addr to '%s'\n", __FUNCTION__, str));
-        strncpy(lanConfig->dhcpConfig.Dhcpv4_End_Addr, str, MAX_IP_LEN-1);
+        strncpy(lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr, str, MAX_IP_LEN-1);
     }
     else if(propertyNameEquals(name, "Dhcpv4_Lease_Time"))
     {
         int32_t i = rbusValue_GetInt32(value);
         LanManagerDebug(("%s: setting Dhcpv4_Lease_Time to '%d'\n", __FUNCTION__, i));
-        lanConfig->dhcpConfig.Dhcpv4_Lease_Time = i;
+        lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time = i;
     }
     else if(propertyNameEquals(name, "Ipv6Prefix"))
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Ipv6Prefix to '%s'\n", __FUNCTION__, str));
-        strncpy(lanConfig->dhcpv6Config.Ipv6Prefix, str, MAX_PREFIX_LEN-1);
+        strncpy(lanConfig->dhcpConfig.dhcpv6Config.Ipv6Prefix, str, MAX_PREFIX_LEN-1);
     }
     else if(propertyNameEquals(name, "StateFull"))
     {
         bool b = rbusValue_GetBoolean(value);
         LanManagerDebug(("%s: setting StateFull to '%d'\n", __FUNCTION__, b));
-        lanConfig->dhcpv6Config.StateFull = b;
+        lanConfig->dhcpConfig.dhcpv6Config.StateFull = b;
     }
     else if(propertyNameEquals(name, "StateLess"))
     {
         bool b = rbusValue_GetBoolean(value);
         LanManagerDebug(("%s: setting StateLess to '%d'\n", __FUNCTION__, b));
-        lanConfig->dhcpv6Config.StateLess = b;
+        lanConfig->dhcpConfig.dhcpv6Config.StateLess = b;
     }
     else if(propertyNameEquals(name, "Dhcpv6_Start_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Dhcpv6_Start_Addr to '%s'\n", __FUNCTION__, str));
-        strncpy(lanConfig->dhcpv6Config.Dhcpv6_Start_Addr, str, MAX_IP_LEN-1);
+        strncpy(lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr, str, MAX_IP_LEN-1);
     }
     else if(propertyNameEquals(name, "Dhcpv6_End_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Dhcpv6_End_Addr to '%s'\n", __FUNCTION__, str));
-        strncpy(lanConfig->dhcpv6Config.Dhcpv6_End_Addr, str, MAX_IP_LEN-1);
+        strncpy(lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr, str, MAX_IP_LEN-1);
     }
     else if(propertyNameEquals(name, "Firewall_Level"))
     {
@@ -593,7 +593,7 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     {
         bool b = rbusValue_GetBoolean(value);
         LanManagerDebug(("%s: setting IGD_Enable to '%d'\n", __FUNCTION__, b));
-        lanConfig->IGD_Enable = b;
+        lanConfig->bridgeInfo.igdEnable = b;
     }
     else if(propertyNameEquals(name, "Status"))
     {
@@ -632,7 +632,7 @@ rbusError_t getHandlerIface(rbusHandle_t handle, rbusProperty_t property, rbusGe
 
     if(propertyNameEquals(name, "Interface"))
     {
-        rbusValue_SetString(value, iface->Interfaces);
+        rbusValue_SetString(value, iface->interfaceName);
     }
     else if(propertyNameEquals(name, "VlanId"))
     {
@@ -682,7 +682,7 @@ rbusError_t setHandlerIface(rbusHandle_t handle, rbusProperty_t property, rbusSe
     {
         const char* str = rbusValue_GetString(value, NULL);
         LanManagerDebug(("%s: setting Interface to '%s'\n", __FUNCTION__, str));
-        strncpy(iface->Interfaces, str, MAX_NAME_LEN-1);
+        strncpy(iface->interfaceName, str, MAX_NAME_LEN-1);
     }
     else if(propertyNameEquals(name, "VlanId"))
     {

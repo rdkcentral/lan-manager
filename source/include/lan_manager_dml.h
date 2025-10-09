@@ -2,10 +2,9 @@
 #define _LAN_MANAGER_DML_H_
 
 #include <stdint.h>
+#include "lan_manager_interface.h"
 
 #define MAX_TABLE_ROWS 16
-
-#include "lan_manager_interface.h"
 
 typedef enum
 {
@@ -24,7 +23,7 @@ typedef struct
 typedef struct DataModel
 {
     uint32_t lanConfigInstNum;
-    LanConfig lanConfigs[MAX_TABLE_ROWS];
+    LanConfig *lanConfigs;
 } DataModel;
 
 extern DataModel gDM;

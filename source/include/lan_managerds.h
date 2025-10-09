@@ -19,6 +19,8 @@
 #ifndef LMDATASTORE_H
 #define LMDATASTORE_H
 
+#include "lan_manager_interface.h"
+
 #define BASE_MAX_BRIDGES   2 //20
 
 typedef enum {

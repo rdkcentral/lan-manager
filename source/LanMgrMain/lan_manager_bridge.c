@@ -27,7 +27,8 @@
 #include "lan_manager_bridge.h"
 #include "lan_manager_dml.h"
 #include "lanmgr_communication_apis.h"
-#include "lan_managerdb.h" /* Persistence API header */
+#include "lan_managerdb.h"
+#include "lan_managerds.h"
 
 /*
  * PersistLanConfig: Writes current LanConfig into persistent datastore via
@@ -48,7 +49,7 @@ static void PersistLanConfig(const LanConfig *cfg)
     if(st != LM_SUCCESS)
         LanManagerError(("PersistLanConfig: SetLanConfigInterfaceCountInfo failed (%d) for %s\n", st, alias));
 
-    st = SetLanConfigInterfaceInfo(alias, cfg->ifaces);
+    st = SetLanConfigInterfaceInfo(alias, cfg->interfaces);
     if(st != LM_SUCCESS)
         LanManagerError(("PersistLanConfig: SetLanConfigInterfaceInfo failed (%d) for %s\n", st, alias));
 
@@ -60,7 +61,7 @@ static void PersistLanConfig(const LanConfig *cfg)
     if(st != LM_SUCCESS)
         LanManagerError(("PersistLanConfig: SetLanConfigIPConfigInfo failed (%d) for %s\n", st, alias));
 
-    st = SetLanConfigDhcpv6ConfigInfo(alias, &cfg->dhcpv6Config);
+    st = SetLanConfigDhcpv6ConfigInfo(alias, &cfg->dhcpConfig.dhcpv6Config);
     if(st != LM_SUCCESS)
         LanManagerError(("PersistLanConfig: SetLanConfigDhcpv6ConfigInfo failed (%d) for %s\n", st, alias));
 
@@ -159,11 +160,11 @@ static void PopulateBridgeInfo(int i, LanConfig *cfg, const LanConfigSource *src
         if (src->ifaces[j].Interfaces.param) {
             snprintf(param_buf, 256, src->ifaces[j].Interfaces.param, l2net_idx);
             LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Calling GetValueFromDb for Interfaces: param_buf=%s, src=%d, iface=%d\n", param_buf, src->ifaces[j].Interfaces.src, j));
-            result = GetValueFromDb(param_buf, cfg->ifaces[j].Interfaces, PARAM_STRING, src->ifaces[j].Interfaces.src);
+            result = GetValueFromDb(param_buf, cfg->interfaces[j].interfaceName, PARAM_STRING, src->ifaces[j].Interfaces.src);
             if (!result) {
                 LanManagerError(("Failed to get interfaces for bridge %d, iface %d. result=%d\n", i, j, (int)result));
             } else {
-                LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got interfaces for bridge %d, iface %d: '%s'\n", i, j, cfg->ifaces[j].Interfaces));
+                LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got interfaces for bridge %d, iface %d: '%s'\n", i, j, cfg->interfaces[j].interfaceName));
                 cfg->numOfIfaces++;
             }
         }
@@ -171,19 +172,19 @@ static void PopulateBridgeInfo(int i, LanConfig *cfg, const LanConfigSource *src
         if (src->ifaces[j].InfType.param) {
             snprintf(param_buf, 256, src->ifaces[j].InfType.param, l2net_idx);
             LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Calling GetValueFromDb for InfType: param_buf=%s, src=%d, iface=%d\n", param_buf, src->ifaces[j].InfType.src, j));
-            result = GetValueFromDb(param_buf, &cfg->ifaces[j].InfType, PARAM_INT, src->ifaces[j].InfType.src);
+            result = GetValueFromDb(param_buf, &cfg->interfaces[j].InfType, PARAM_INT, src->ifaces[j].InfType.src);
             if (!result) {
                 LanManagerError(("Failed to get interface type for bridge %d, iface %d. result=%d\n", i, j, (int)result));
             } else {
-                LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got interface type for bridge %d, iface %d: %d\n", i, j, cfg->ifaces[j].InfType));
+                LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got interface type for bridge %d, iface %d: %d\n", i, j, cfg->interfaces[j].InfType));
             }
         }
         // Read vlanId
         if (src->ifaces[j].vlanId.param) {
             snprintf(param_buf, 256, src->ifaces[j].vlanId.param, l2net_idx);
             LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Calling GetValueFromDb for vlanId: param_buf=%s, src=%d, iface=%d\n", param_buf, src->ifaces[j].vlanId.src, j));
-            result = GetValueFromDb(param_buf, &cfg->ifaces[j].vlanId, PARAM_INT, src->ifaces[j].vlanId.src);
-            LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got vlanId for bridge %d, iface %d: %d\n", i, j, cfg->ifaces[j].vlanId));
+            result = GetValueFromDb(param_buf, &cfg->interfaces[j].vlanId, PARAM_INT, src->ifaces[j].vlanId.src);
+            LanManagerInfo(("[DEBUG][PopulateBridgeInfo] Got vlanId for bridge %d, iface %d: %d\n", i, j, cfg->interfaces[j].vlanId));
         }
     }
 }
@@ -239,46 +240,46 @@ static void PopulateDhcpConfig(int i, LanConfig *cfg, const LanConfigSource *src
     if (src->dhcpConfig.Dhcpv4_Enable.param) {
         snprintf(param_buf, 256, src->dhcpConfig.Dhcpv4_Enable.param, dhcpv4_idx);
         LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Calling GetValueFromDb for Dhcpv4_Enable: param_buf=%s, src=%d\n", param_buf, src->dhcpConfig.Dhcpv4_Enable.src));
-        result = GetValueFromDb(param_buf, &cfg->dhcpConfig.Dhcpv4_Enable, PARAM_BOOLEAN, src->dhcpConfig.Dhcpv4_Enable.src);
+        result = GetValueFromDb(param_buf, &cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable, PARAM_BOOLEAN, src->dhcpConfig.Dhcpv4_Enable.src);
         if (!result) {
             LanManagerError(("Failed to get DHCP enable status for bridge %d. result=%d\n", i, (int)result));
-            cfg->dhcpConfig.Dhcpv4_Enable = false;
+            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable = false;
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Enable for bridge %d: %d\n", i, cfg->dhcpConfig.Dhcpv4_Enable));
+            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Enable for bridge %d: %d\n", i, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable));
         }
     }
     // Read Dhcpv4_Start_Addr
     if (src->dhcpConfig.Dhcpv4_Start_Addr.param) {
         snprintf(param_buf, 256, src->dhcpConfig.Dhcpv4_Start_Addr.param, dhcpv4_idx);
         LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Calling GetValueFromDb for Dhcpv4_Start_Addr: param_buf=%s, src=%d\n", param_buf, src->dhcpConfig.Dhcpv4_Start_Addr.src));
-        result = GetValueFromDb(param_buf, cfg->dhcpConfig.Dhcpv4_Start_Addr, PARAM_STRING, src->dhcpConfig.Dhcpv4_Start_Addr.src);
+        result = GetValueFromDb(param_buf, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr, PARAM_STRING, src->dhcpConfig.Dhcpv4_Start_Addr.src);
         if (!result) {
             LanManagerError(("Failed to get DHCP start address for bridge %d. result=%d\n", i, (int)result));
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Start_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.Dhcpv4_Start_Addr));
+            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Start_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr));
         }
     }
     // Read Dhcpv4_End_Addr
     if (src->dhcpConfig.Dhcpv4_End_Addr.param) {
         snprintf(param_buf, 256, src->dhcpConfig.Dhcpv4_End_Addr.param, dhcpv4_idx);
         LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Calling GetValueFromDb for Dhcpv4_End_Addr: param_buf=%s, src=%d\n", param_buf, src->dhcpConfig.Dhcpv4_End_Addr.src));
-        result = GetValueFromDb(param_buf, cfg->dhcpConfig.Dhcpv4_End_Addr, PARAM_STRING, src->dhcpConfig.Dhcpv4_End_Addr.src);
+        result = GetValueFromDb(param_buf, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr, PARAM_STRING, src->dhcpConfig.Dhcpv4_End_Addr.src);
         if (!result) {
             LanManagerError(("Failed to get DHCP end address for bridge %d. result=%d\n", i, (int)result));
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_End_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.Dhcpv4_End_Addr));
+            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_End_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr));
         }
     }
     // Read Dhcpv4_Lease_Time
     if (src->dhcpConfig.Dhcpv4_Lease_Time.param) {
         snprintf(param_buf, 256, src->dhcpConfig.Dhcpv4_Lease_Time.param, dhcpv4_idx);
         LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Calling GetValueFromDb for Dhcpv4_Lease_Time: param_buf=%s, src=%d\n", param_buf, src->dhcpConfig.Dhcpv4_Lease_Time.src));
-        result = GetValueFromDb(param_buf, &cfg->dhcpConfig.Dhcpv4_Lease_Time, PARAM_INT, src->dhcpConfig.Dhcpv4_Lease_Time.src);
+        result = GetValueFromDb(param_buf, &cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time, PARAM_INT, src->dhcpConfig.Dhcpv4_Lease_Time.src);
         if (!result) {
             LanManagerError(("Failed to get DHCP lease time for bridge %d. result=%d\n", i, (int)result));
-            cfg->dhcpConfig.Dhcpv4_Lease_Time = 86400;
+            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time = 86400;
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Lease_Time for bridge %d: %d\n", i, cfg->dhcpConfig.Dhcpv4_Lease_Time));
+            LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Lease_Time for bridge %d: %d\n", i, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time));
         }
     }
 }
@@ -288,53 +289,53 @@ static void PopulateDhcpv6Config(int i, LanConfig *cfg, const LanConfigSource *s
     // Read Ipv6Prefix
     if (src->dhcpv6Config.Ipv6Prefix.param) {
         LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Calling GetValueFromDb for Ipv6Prefix: param=%s, src=%d\n", src->dhcpv6Config.Ipv6Prefix.param, src->dhcpv6Config.Ipv6Prefix.src));
-        result = GetValueFromDb((char*)src->dhcpv6Config.Ipv6Prefix.param, cfg->dhcpv6Config.Ipv6Prefix, PARAM_STRING, src->dhcpv6Config.Ipv6Prefix.src);
+        result = GetValueFromDb((char*)src->dhcpv6Config.Ipv6Prefix.param, cfg->dhcpConfig.dhcpv6Config.Ipv6Prefix, PARAM_STRING, src->dhcpv6Config.Ipv6Prefix.src);
         if (!result) {
             LanManagerError(("Failed to get IPv6 prefix for bridge %d. result=%d\n", i, (int)result));
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Ipv6Prefix for bridge %d: '%s'\n", i, cfg->dhcpv6Config.Ipv6Prefix));
+            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Ipv6Prefix for bridge %d: '%s'\n", i, cfg->dhcpConfig.dhcpv6Config.Ipv6Prefix));
         }
     }
     // Read StateFull
     if (src->dhcpv6Config.StateFull.param) {
         LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Calling GetValueFromDb for StateFull: param=%s, src=%d\n", src->dhcpv6Config.StateFull.param, src->dhcpv6Config.StateFull.src));
-        result = GetValueFromDb((char*)src->dhcpv6Config.StateFull.param, &cfg->dhcpv6Config.StateFull, PARAM_BOOLEAN, src->dhcpv6Config.StateFull.src);
+        result = GetValueFromDb((char*)src->dhcpv6Config.StateFull.param, &cfg->dhcpConfig.dhcpv6Config.StateFull, PARAM_BOOLEAN, src->dhcpv6Config.StateFull.src);
         if (!result) {
             LanManagerError(("Failed to get IPv6 stateful configuration for bridge %d. result=%d\n", i, (int)result));
-            cfg->dhcpv6Config.StateFull = false;
+            cfg->dhcpConfig.dhcpv6Config.StateFull = false;
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got StateFull for bridge %d: %d\n", i, cfg->dhcpv6Config.StateFull));
+            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got StateFull for bridge %d: %d\n", i, cfg->dhcpConfig.dhcpv6Config.StateFull));
         }
     }
     // Read StateLess
     if (src->dhcpv6Config.StateLess.param) {
         LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Calling GetValueFromDb for StateLess: param=%s, src=%d\n", src->dhcpv6Config.StateLess.param, src->dhcpv6Config.StateLess.src));
-        result = GetValueFromDb((char*)src->dhcpv6Config.StateLess.param, &cfg->dhcpv6Config.StateLess, PARAM_BOOLEAN, src->dhcpv6Config.StateLess.src);
+        result = GetValueFromDb((char*)src->dhcpv6Config.StateLess.param, &cfg->dhcpConfig.dhcpv6Config.StateLess, PARAM_BOOLEAN, src->dhcpv6Config.StateLess.src);
         if (!result) {
             LanManagerError(("Failed to get IPv6 stateless configuration for bridge %d. result=%d\n", i, (int)result));
-            cfg->dhcpv6Config.StateLess = false;
+            cfg->dhcpConfig.dhcpv6Config.StateLess = false;
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got StateLess for bridge %d: %d\n", i, cfg->dhcpv6Config.StateLess));
+            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got StateLess for bridge %d: %d\n", i, cfg->dhcpConfig.dhcpv6Config.StateLess));
         }
     }
     // Read Dhcpv6_Start_Addr
     if (src->dhcpv6Config.Dhcpv6_Start_Addr.param) {
         LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Calling GetValueFromDb for Dhcpv6_Start_Addr: param=%s, src=%d\n", src->dhcpv6Config.Dhcpv6_Start_Addr.param, src->dhcpv6Config.Dhcpv6_Start_Addr.src));
-        result = GetValueFromDb((char*)src->dhcpv6Config.Dhcpv6_Start_Addr.param, cfg->dhcpv6Config.Dhcpv6_Start_Addr, PARAM_STRING, src->dhcpv6Config.Dhcpv6_Start_Addr.src);
+        result = GetValueFromDb((char*)src->dhcpv6Config.Dhcpv6_Start_Addr.param, cfg->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr, PARAM_STRING, src->dhcpv6Config.Dhcpv6_Start_Addr.src);
         if (!result) {
             LanManagerError(("Failed to get DHCPv6 start address for bridge %d. result=%d\n", i, (int)result));
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Dhcpv6_Start_Addr for bridge %d: '%s'\n", i, cfg->dhcpv6Config.Dhcpv6_Start_Addr));
+            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Dhcpv6_Start_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr));
         }
     }
     // Read Dhcpv6_End_Addr
     if (src->dhcpv6Config.Dhcpv6_End_Addr.param) {
         LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Calling GetValueFromDb for Dhcpv6_End_Addr: param=%s, src=%d\n", src->dhcpv6Config.Dhcpv6_End_Addr.param, src->dhcpv6Config.Dhcpv6_End_Addr.src));
-        result = GetValueFromDb((char*)src->dhcpv6Config.Dhcpv6_End_Addr.param, cfg->dhcpv6Config.Dhcpv6_End_Addr, PARAM_STRING, src->dhcpv6Config.Dhcpv6_End_Addr.src);
+        result = GetValueFromDb((char*)src->dhcpv6Config.Dhcpv6_End_Addr.param, cfg->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr, PARAM_STRING, src->dhcpv6Config.Dhcpv6_End_Addr.src);
         if (!result) {
             LanManagerError(("Failed to get DHCPv6 end address for bridge %d. result=%d\n", i, (int)result));
         } else {
-            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Dhcpv6_End_Addr for bridge %d: '%s'\n", i, cfg->dhcpv6Config.Dhcpv6_End_Addr));
+            LanManagerInfo(("[DEBUG][PopulateDhcpv6Config] Got Dhcpv6_End_Addr for bridge %d: '%s'\n", i, cfg->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr));
         }
     }
 }
@@ -385,12 +386,12 @@ static void PopulateIgdConfig(int i, LanConfig *cfg, const LanConfigSource *src,
     // Read IGD_Enable
     if (src->igdConfig.IGD_Enable.param) {
         LanManagerInfo(("[DEBUG][PopulateIgdConfig] Calling GetValueFromDb for IGD_Enable: param=%s, src=%d\n", src->igdConfig.IGD_Enable.param, src->igdConfig.IGD_Enable.src));
-        result = GetValueFromDb((char*)src->igdConfig.IGD_Enable.param, &cfg->IGD_Enable, PARAM_BOOLEAN, src->igdConfig.IGD_Enable.src);
+        result = GetValueFromDb((char*)src->igdConfig.IGD_Enable.param, &cfg->bridgeInfo.igdEnable, PARAM_BOOLEAN, src->igdConfig.IGD_Enable.src);
         if (!result) {
             LanManagerError(("Failed to get IGD enable status for bridge %d. result=%d\n", i, (int)result));
-            cfg->IGD_Enable = false;
+            cfg->bridgeInfo.igdEnable = false;
         } else {
-            LanManagerInfo(("[DEBUG][PopulateIgdConfig] Got IGD_Enable for bridge %d: %d\n", i, cfg->IGD_Enable));
+            LanManagerInfo(("[DEBUG][PopulateIgdConfig] Got IGD_Enable for bridge %d: %d\n", i, cfg->bridgeInfo.igdEnable));
         }
     }
 }
@@ -414,9 +415,8 @@ void PopulateAllBridges()
         char param_buf[256];
         bool result = false;
 
-        /* Initialize the instance */
-        cfg->instNum = 0; /* Let rbus assign */
-        snprintf(cfg->alias, sizeof(cfg->alias), "cpe-lan-%d", i);
+        /* Initialize the configuration */
+        snprintf(cfg->bridgeInfo.alias, sizeof(cfg->bridgeInfo.alias), "cpe-lan-%d", i);
         
         // Read Layer 2 network index and bridge info
         int l2net_idx = -1;
@@ -491,15 +491,15 @@ void PopulateAllBridges()
 
         /* Now that the config is populated, register it with rbus */
         uint32_t assignedInstNum = 0;
-        rbusError_t ret = rbusTable_addRow(rbus_handle, "Device.LanManager.LanConfig.", cfg->alias, &assignedInstNum);
+        rbusError_t ret = rbusTable_addRow(rbus_handle, "Device.LanManager.LanConfig.", cfg->bridgeInfo.alias, &assignedInstNum);
         if(ret == RBUS_ERROR_SUCCESS)
         {
-            LanManagerInfo(("[PopulateAllBridges] Successfully added row for %s, instance number %u\n", cfg->alias, assignedInstNum));
+            LanManagerInfo(("[PopulateAllBridges] Successfully added row for %s, instance number %u\n", cfg->bridgeInfo.alias, assignedInstNum));
 
             // Add the interfaces for this bridge to the Iface table
             for (int j = 0; j < cfg->numOfIfaces; ++j)
             {
-                if (cfg->ifaces[j].Interfaces[0] != '\0')
+                if (cfg->interfaces[j].interfaceName[0] != '\0')
                 {
                     char ifaceTableName[256];
                     snprintf(ifaceTableName, sizeof(ifaceTableName), "Device.LanManager.LanConfig.%u.Iface.", assignedInstNum);
@@ -519,7 +519,7 @@ void PopulateAllBridges()
         }
         else
         {
-            LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for alias %s with error %d\n", cfg->alias, ret));
+            LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for alias %s with error %d\n", cfg->bridgeInfo.alias, ret));
         }
 
         /* Persist populated configuration regardless of rbus add outcome */

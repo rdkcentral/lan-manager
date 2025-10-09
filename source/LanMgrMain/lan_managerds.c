@@ -20,10 +20,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "lan_manager.h"
 #include "lan_managerds.h"
-
-#define LM_TRACE printf  //To be replaced with actual logging infra
+#include "lan_manager_dml.h"
+#include "lan_manager_interface.h"
+#include "lan_manager_dml.h"
+#include "lanmgr_log.h"
 
 static LanConfig *LanDB = NULL;
 static int count = 0;
@@ -42,10 +43,10 @@ static int capacity = BASE_MAX_BRIDGES;
  * Nil
  **************************************************************/
 LM_Status LanConfigDataStoreInit() {
-    LanDB = (LanConfig*)malloc(capacity * sizeof(LanConfig));
+    gDM.lanConfigs = LanDB = (LanConfig*)malloc(capacity * sizeof(LanConfig));
     if(LanDB == NULL)
     {
-        LM_TRACE("\r\n%s:Returned Failure\r\n",__FUNCTION__);
+        LanManagerError(("%s: Returned Failure\n", __FUNCTION__));
         return LM_FAILURE;
     }
     return LM_SUCCESS;
@@ -84,7 +85,7 @@ void LanConfigDataStoreCleanup() {
 LM_Status LanConfigDataStoreAdd(const LanConfig *LanInfo) {
     if(LanInfo==NULL)
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -102,12 +103,12 @@ LM_Status LanConfigDataStoreAdd(const LanConfig *LanInfo) {
         LanConfig *temp = (LanConfig*)realloc(LanDB, (capacity+1) * sizeof(LanConfig));
         if(temp == NULL)
         {
-            LM_TRACE("\r\n%s:Realloc Failed\r\n",__FUNCTION__);
+            LanManagerError(("%s: Realloc Failed\n", __FUNCTION__));
             return LM_FAILURE;
         }
-        LanDB = temp;
+        gDM.lanConfigs = LanDB = temp;
         capacity++; // Only increment after successful realloc
-        LM_TRACE("\r\n%s:Realloc Success\r\n",__FUNCTION__);
+        LanManagerInfo(("%s: Realloc Success\n", __FUNCTION__));
     }
     /*Doing a shallow copy with the understanding that there are no
       pointers to nested structures in LanConfig*/
@@ -134,7 +135,7 @@ LM_Status LanConfigDataStoreAdd(const LanConfig *LanInfo) {
 LM_Status LanConfigDataStoreGet(const char *key,LanConfig *result) {
     if((key==NULL)||(result==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -166,7 +167,7 @@ LM_Status LanConfigDataStoreGet(const char *key,LanConfig *result) {
 LM_Status LanConfigDataStoreGetAll(int *numEntries, LanConfig **fullTbl) {
     if((numEntries==NULL)||(fullTbl==NULL))
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
     *fullTbl=LanDB;
@@ -193,7 +194,7 @@ LM_Status LanConfigDataStoreGetAll(int *numEntries, LanConfig **fullTbl) {
 LM_Status LanConfigDataStoreRemove(const LanConfig *LanInfo) {
     if(LanInfo==NULL)
     {
-        LM_TRACE("\r\n%s:Invalid Parameters are passed\r\n",__FUNCTION__);
+        LanManagerError(("%s: Invalid Parameters are passed\n", __FUNCTION__));
         return LM_FAILURE;
     }
 
@@ -208,14 +209,14 @@ LM_Status LanConfigDataStoreRemove(const LanConfig *LanInfo) {
             if (capacity > BASE_MAX_BRIDGES && count <= BASE_MAX_BRIDGES) {
                 LanConfig *temp = (LanConfig*)realloc(LanDB, BASE_MAX_BRIDGES * sizeof(LanConfig));
                 if (temp != NULL) {
-                    LanDB = temp;
+                    gDM.lanConfigs = LanDB = temp;
                     capacity = BASE_MAX_BRIDGES;
-                    LM_TRACE("\r\n%s:Realloc Success\r\n",__FUNCTION__);
+                    LanManagerInfo(("%s: Realloc Success\n", __FUNCTION__));
                 }
                 else
                 {
                     // If realloc fails, keep the old memory to avoid losing data
-                    LM_TRACE("\r\n%s:Realloc Failed\r\n",__FUNCTION__);
+                    LanManagerError(("%s: Realloc Failed\n", __FUNCTION__));
                 }
             }
 
@@ -243,79 +244,79 @@ void LanConfigDataStoreDump() {
     {
         for(travDB=0;travDB < count;travDB++)
         {
-            printf("\r\n**********************************\r\n");
+            LanManagerInfo(("\r\n**********************************\r\n"));
             if(strcmp(LanDB[travDB].bridgeInfo.alias,"")!=0)
             {
-                printf("\r\nLanDB Entry:%15d\r\n",travDB);
-                printf("\r\n**********************************\r\n");
+                LanManagerInfo(("\r\nLanDB Entry:%15d\r\n",travDB));
+                LanManagerInfo(("\r\n**********************************\r\n"));
                 printf("\r\n|%15s|%17s|%27s|%26s|%24s|\r\n","Alias Name","BridgeInfo",
                         "IPConfig","DHCPConfig","DHCPv6Config");
                 printf("\r\n|---------------|-----------------|---------------------------"
                         "|--------------------------|------------------------|\r\n");
-                printf("\r\n|%11s    | %s%10s | %s%15d | %s%12d | %s%15s |\r\n",LanDB[travDB].bridgeInfo.alias,
+                LanManagerInfo(("\r\n|%11s    | %s%10s | %s%15d | %s%12d | %s%15s |\r\n",LanDB[travDB].bridgeInfo.alias,
                         "Name:",LanDB[travDB].bridgeInfo.bridgeName,
                         "IP Status:",LanDB[travDB].ipConfig.Ip_Enable,
-                        "DHCP Status:",LanDB[travDB].dhcpConfig.Dhcpv4_Enable,
-                        "Prefix:",LanDB[travDB].dhcpv6Config.Ipv6Prefix);
-                printf("\r\n|%15s| %s%10d | %s%18s | %s%13d | %s%12d |\r\n","",
+                        "DHCP Status:",LanDB[travDB].dhcpConfig.dhcpv4Config.Dhcpv4_Enable,
+                        "Prefix:",LanDB[travDB].dhcpConfig.dhcpv6Config.Ipv6Prefix));
+                LanManagerInfo(("\r\n|%15s| %s%10d | %s%18s | %s%13d | %s%12d |\r\n","",
                         "Type:",LanDB[travDB].bridgeInfo.networkBridgeType,
                         "IPv4 @:",LanDB[travDB].ipConfig.Ipv4Address,
-                        "Lease Time:",LanDB[travDB].dhcpConfig.Dhcpv4_Lease_Time,
-                        "StateFull:",LanDB[travDB].dhcpv6Config.StateFull);
-                printf("\r\n|%15s| %s%6d | %s%16s | %s%16s | %s%12d |\r\n","",
+                        "Lease Time:",LanDB[travDB].dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time,
+                        "StateFull:",LanDB[travDB].dhcpConfig.dhcpv6Config.StateFull));
+                LanManagerInfo(("\r\n|%15s| %s%6d | %s%16s | %s%16s | %s%12d |\r\n","",
                         "Category:",LanDB[travDB].bridgeInfo.userBridgeCategory,
                         "Subnet @:",LanDB[travDB].ipConfig.IpSubNet,
-                        "Start @:",LanDB[travDB].dhcpConfig.Dhcpv4_Start_Addr,
-                        "StateLess:",LanDB[travDB].dhcpv6Config.StateLess);
-                printf("\r\n|%15s| %s%4d | %s%18s | %s%18s | %s%14s |\r\n","",
+                        "Start @:",LanDB[travDB].dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr,
+                        "StateLess:",LanDB[travDB].dhcpConfig.dhcpv6Config.StateLess));
+                LanManagerInfo(("\r\n|%15s| %s%4d | %s%18s | %s%18s | %s%14s |\r\n","",
                         "STP Status:",LanDB[travDB].bridgeInfo.stpEnable,
                         "IPv6 @:",LanDB[travDB].ipConfig.Ipv6Address,
-                        "End @:",LanDB[travDB].dhcpConfig.Dhcpv4_End_Addr,
-                        "Start @:",LanDB[travDB].dhcpv6Config.Dhcpv6_Start_Addr);
-                printf("\r\n|%15s| %s%5d | %25s | %24s | %s%16s |\r\n","",
+                        "End @:",LanDB[travDB].dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr,
+                        "Start @:",LanDB[travDB].dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr));
+                LanManagerInfo(("\r\n|%15s| %s%5d | %25s | %24s | %s%16s |\r\n","",
                         "IGD Status",LanDB[travDB].bridgeInfo.igdEnable,"","",
-                        "End @:",LanDB[travDB].dhcpv6Config.Dhcpv6_End_Addr);
-                printf("\r\n|%15s| %s%5d | %25s | %24s | %s%16d |\r\n","",
+                        "End @:",LanDB[travDB].dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr));
+                LanManagerInfo(("\r\n|%15s| %s%5d | %25s | %24s | %s%16d |\r\n","",
                         "Life Time:",LanDB[travDB].bridgeInfo.bridgeLifeTime,
-                        "","","@ Type",LanDB[travDB].dhcpv6Config.addrType);
-                printf("\r\n|               |-----------------|---------------------------"
-                        "|--------------------------|------------------------|\r\n");
-                printf("\r\n|%15s|%17s|%27s|%26s|%24s|\r\n","","FirewallConfig",
-                        "SecurityConfig","","");
-                printf("\r\n|               |-----------------|---------------------------"
-                        "|--------------------------|------------------------|\r\n");
-                printf("\r\n|%15s| %s%9d | %s%11d | %24s | %22s |\r\n","",
+                        "","","@ Type",LanDB[travDB].dhcpConfig.dhcpv6Config.addrType));
+                LanManagerInfo(("\r\n|               |-----------------|---------------------------"
+                        "|--------------------------|------------------------|\r\n"));
+                LanManagerInfo(("\r\n|%15s|%17s|%27s|%26s|%24s|\r\n","","FirewallConfig",
+                        "SecurityConfig","",""));
+                LanManagerInfo(("\r\n|               |-----------------|---------------------------"
+                        "|--------------------------|------------------------|\r\n"));
+                LanManagerInfo(("\r\n|%15s| %s%9d | %s%11d | %24s | %22s |\r\n","",
                         "Level:",LanDB[travDB].firewallConfig.Firewall_Level,
                         "Enable Status:",LanDB[travDB].securityConfig.VPN_Security_Enable,
-                        "","");
-                printf("\r\n|%15s| %s%1d | %25s | %24s | %22s |\r\n","",
+                        "",""));
+                LanManagerInfo(("\r\n|%15s| %s%1d | %25s | %24s | %22s |\r\n","",
                         "Enable Status:",LanDB[travDB].firewallConfig.Firewall_Enable,
-                        "","","");
-                printf("\r\n|---------------|-----------------|---------------------------"
-                        "|--------------------------|------------------------|\r\n");
-                printf("\r\n===========================================================\r\n");
-                printf("\r\nNum of Interfaces:%d | Bridge Status:%d\r\n",
-                        LanDB[travDB].numOfIfaces,LanDB[travDB].status);
-                printf("\r\n===========================================================\r\n");
-                printf("\r\n------------------------------------------------------------\r\n");
-                printf("\r\n| %-20s | %-6s | %-6s | %-6s |\n", "Interface Name", "Type", "VLAN", "Status");
-                printf("\r\n------------------------------------------------------------\r\n");
+                        "","",""));
+                LanManagerInfo(("\r\n|---------------|-----------------|---------------------------"
+                        "|--------------------------|------------------------|\r\n"));
+                LanManagerInfo(("\r\n===========================================================\r\n"));
+                LanManagerInfo(("\r\nNum of Interfaces:%d | Bridge Status:%d\r\n",
+                        LanDB[travDB].numOfIfaces,LanDB[travDB].status));
+                LanManagerInfo(("\r\n===========================================================\r\n"));
+                LanManagerInfo(("\r\n------------------------------------------------------------\r\n"));
+                LanManagerInfo(("\r\n| %-20s | %-6s | %-6s | %-6s |\n", "Interface Name", "Type", "VLAN", "Status"));
+                LanManagerInfo(("\r\n------------------------------------------------------------\r\n"));
 
                 for (int i = 0; i < MAX_IFACE_COUNT; i++) {
-                    printf("\r\n| %-20s | %-6d | %-6d | %-6d |\r\n", 
-                            LanDB[travDB].ifaces[i].Interfaces,
-                            LanDB[travDB].ifaces[i].InfType,
-                            LanDB[travDB].ifaces[i].vlanId,
-                            LanDB[travDB].ifaces[i].vlanEnable);
+                    LanManagerInfo(("\r\n| %-20s | %-6d | %-6d | %-6d |\r\n", 
+                            LanDB[travDB].interfaces[i].interfaceName,
+                            LanDB[travDB].interfaces[i].InfType,
+                            LanDB[travDB].interfaces[i].vlanId,
+                            LanDB[travDB].interfaces[i].vlanEnable));
                 }
 
-                printf("\r\n===========================================================\r\n");
+                LanManagerInfo(("\r\n===========================================================\r\n"));
             }
         }
-        printf("\r\n**********************************\r\n");
+        LanManagerInfo(("\r\n**********************************\r\n"));
     }
     else
     {
-        printf("\r\nLanDB is NULL\r\n");
+        LanManagerInfo(("\r\nLanDB is NULL\r\n"));
     }
 }

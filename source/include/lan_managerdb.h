@@ -19,6 +19,8 @@
 #ifndef LMDATABASE_H
 #define LMDATABASE_H
 
+#include "lan_managerds.h"
+
 LM_Status GetLanConfigBridgeInfo(const char *BrgAlias,BridgeInfo *BrgInfo);
 LM_Status GetLanConfigInterfaceCountInfo(const char *BrgAlias, int *BrgIfaceCount);
 LM_Status GetLanConfigInterfaceInfo(const char *BrgAlias, Iface *BrgIface);
