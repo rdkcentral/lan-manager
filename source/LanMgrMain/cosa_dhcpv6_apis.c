@@ -72,13 +72,14 @@
 #include "secure_wrapper.h"
 #include "safec_lib_common.h"
 #include "syscfg/syscfg.h"
-#include "cosa_common_util.h"
-#include "cosa_dhcpv6_ipv6_utils.h"
+#include "cosa_dhcpv6_apis.h"
+#include <utapi/utapi.h>
 
 #include <sysevent/sysevent.h>
 #include <ccsp_message_bus.h>
 #include <ccsp_base_api.h>
 #include <ccsp_psm_helper.h>
+#include "commonutil.h"
 
 #ifdef CORE_NET_LIB
 #include <libnet.h>
@@ -100,16 +101,17 @@
 #define MANAGE_WIFI_BRIDGE_INDEX "dmsb.wifiagent.managewifibridge.index"
 #endif
 
-// External system variables  
-extern void* g_pDslhDmlAgent;
-extern ANSC_HANDLE bus_handle;
-extern char g_Subsystem[32];
-
 // Define macros for buffer lengths
 #define BUFF_LEN_64 64
 #define BUFF_LEN_8 8
 
-// Global variables for sysevent functionality (made static for this file)
+// External system variables
+extern void* g_pDslhDmlAgent;
+extern ANSC_HANDLE bus_handle;
+
+char g_Subsystem[32] = "eRT." ;
+
+// Global variables for sysevent functionality
 static int sysevent_fd_1 = -1;
 static token_t sysevent_token_1;
 static pthread_t InfEvtHandle_tid;
@@ -119,6 +121,7 @@ static pthread_t InfEvtHandle_tid;
 extern int Get_Device_Mode(void);
 #define DEVICE_MODE_ROUTER 1
 #endif
+int s_sysevent_connect (token_t *out_se_token);
 
 static void _get_shell_output(FILE *fp, char *buf, size_t len)
 {
@@ -199,7 +202,6 @@ int commonSyseventClose();
 int commonSyseventSet(char* key, char* value);
 int commonSyseventGet(char* key, char* value, int valLen);
 
-#if 0
 int commonSyseventFd = -1;
 token_t commonSyseventToken;
 
@@ -235,7 +237,6 @@ int commonSyseventGet(char* key, char* value, int valLen){
     }
     return sysevent_get(commonSyseventFd, commonSyseventToken, key, value, valLen);
 }
-#endif
 
 static int CalcIPv6Prefix(char *GlobalPref, char *pref, int index)
 {
@@ -452,8 +453,13 @@ static int remove_interface(char* Inf_name)
     if (!Inf_name) return -1;
     
     memset(OutBuff, 0, sizeof(OutBuff));
+    memset(buf, 0, sizeof(buf));
+
+    if (!GetValueFromDb("IPv6_Interface", buf, PARAM_STRING, SYSCFG_DB)) {
+        CcspTraceError(("Failed to get IPv6_Interface from syscfg\n"));
+        return -1;
+    }
     
-    syscfg_get(NULL, "IPv6_Interface", buf, sizeof(buf));
     // interface is present in the list, we need to remove interface to disable IPv6 PD
     pt = buf;
     while((token = strtok_r(pt, ",", &pt))) {
@@ -464,7 +470,11 @@ static int remove_interface(char* Inf_name)
             strncat(OutBuff, ",", sizeof(OutBuff) - strlen(OutBuff) - 1);
         }
     }
-    syscfg_set_commit(NULL, "IPv6_Interface", OutBuff);
+
+    if (!SetValueToDb("IPv6_Interface", OutBuff, SYSCFG_DB)) {
+        CcspTraceError(("Failed to set IPv6_Interface to syscfg\n"));
+        return -1;
+    }
     return 0;
 }
 
@@ -482,14 +492,22 @@ static int append_interface(char* Inf_name)
     if (!Inf_name) return -1;
     
     memset(OutBuff, 0, sizeof(OutBuff));
+    memset(buf, 0, sizeof(buf));
     
-    syscfg_get(NULL, "IPv6_Interface", buf, sizeof(buf));
+    if (!GetValueFromDb("IPv6_Interface", buf, PARAM_STRING, SYSCFG_DB)) {
+        CcspTraceError(("Failed to get IPv6_Interface from syscfg\n"));
+        return -1;
+    }
     
     strncpy(OutBuff, buf, (sizeof(OutBuff) - 1));
     /*CID 173701 fix*/
     strncat(OutBuff, Inf_name, sizeof(OutBuff) - strlen(OutBuff) - 1);
     strncat(OutBuff, ",", sizeof(OutBuff) - strlen(OutBuff) - 1);
-    syscfg_set_commit(NULL, "IPv6_Interface", OutBuff);
+
+    if (!SetValueToDb("IPv6_Interface", OutBuff, SYSCFG_DB)) {
+        CcspTraceError(("Failed to set IPv6_Interface to syscfg\n"));
+        return -1;
+    }
     return 0;
 }
 
@@ -504,7 +522,7 @@ static int Get_Device_Mode()
     int deviceMode = 0;
     char buf[8] = {0};
     memset(buf, 0, sizeof(buf));
-    if (0 == syscfg_get(NULL, "Device_Mode", buf, sizeof(buf)))
+    if (GetValueFromDb("Device_Mode", buf, PARAM_STRING, SYSCFG_DB))
     {
         if (buf[0] != '\0' && strlen(buf) != 0)
             deviceMode = atoi(buf);
@@ -616,8 +634,18 @@ static int handle_MocaIpv6(char *status)
         return -1;
     }
     
-    syscfg_get(NULL, "ipv6_moca_bridge", mbuf, sizeof(mbuf));
-    syscfg_get(NULL, "IPv6_Interface", ipv6If, sizeof(ipv6If));
+    memset(mbuf, 0, sizeof(mbuf));
+    memset(ipv6If, 0, sizeof(ipv6If));
+
+    if (!GetValueFromDb("ipv6_moca_bridge", mbuf, PARAM_STRING, SYSCFG_DB)) {
+        CcspTraceError(("Failed to get ipv6_moca_bridge from syscfg\n"));
+        return -1;
+    }
+
+    if (!GetValueFromDb("IPv6_Interface", ipv6If, PARAM_STRING, SYSCFG_DB)) {
+        CcspTraceError(("Failed to get IPv6_Interface from syscfg\n"));
+        return -1;
+    }
 
     ((CCSP_MESSAGE_BUS_INFO *)bus_handle)->freefunc(str);
     retPsmGet = PSM_Get_Record_Value2(bus_handle, g_Subsystem, "dmsb.l2net.9.Name", NULL, &Inf_name);
@@ -629,7 +657,7 @@ static int handle_MocaIpv6(char *status)
     {
         retPsmGet = CCSP_SUCCESS;
         if(NULL == Inf_name){
-            Inf_name = (char *)AnscAllocateMemory( (strlen("brlan10") + 1) );
+            Inf_name = (char *)malloc( (strlen("brlan10") + 1) );
             strncpy(Inf_name, "brlan10", strlen("brlan10") +1);
         }
     }
@@ -725,7 +753,10 @@ void *InterfaceEventHandler_thrd(void *data)
     sysevent_setnotification(sysevent_fd_1, sysevent_token_1, "multinet_9-status",  &interface_MoCA_asyncid);
 
 #if defined (WIFI_MANAGE_SUPPORTED)
-    psmGet(MANAGE_WIFI_BRIDGE_INDEX, index, BUFF_LEN_8);
+    if (!GetValueFromDb(MANAGE_WIFI_BRIDGE_INDEX, index, PARAM_STRING, PSM_DB)) {
+        CcspTraceInfo(("WiFi bridge index not found in PSM, WiFi management disabled\n"));
+        index[0] = '\0';
+    }
     if ('\0' != index[0])
     {
         snprintf (aMultiNetStatus, BUFF_LEN_64, "multinet_%s-status", index);
@@ -894,7 +925,11 @@ void *InterfaceEventHandler_thrd(void *data)
                 char aParamVal[BUFF_LEN_64] = {0};
                 char aBridgeName[BUFF_LEN_64] = {0};
                 snprintf(aParamName, BUFF_LEN_64, "dmsb.l2net.%s.Name", index);
-                psmGet(aParamName, aParamVal, BUFF_LEN_64);
+                if (!GetValueFromDb(aParamName, aParamVal, PARAM_STRING, PSM_DB)) {
+                    CcspTraceWarning(("Failed to get %s from PSM\n", aParamName));
+                    aParamVal[0] = '\0';
+                }
+
                 if ('\0' != aParamVal[0])
                 {   
                     /*CID 66870*/
@@ -906,7 +941,10 @@ void *InterfaceEventHandler_thrd(void *data)
                     strncpy(aBridgeName, "brlan15", sizeof(aBridgeName) - 1);
                 }
                 snprintf(aParamName, BUFF_LEN_64, "dmsb.l3net.%s.IPv6Enable", index);
-                psmGet(aParamName, aParamVal, BUFF_LEN_64);
+                if (!GetValueFromDb(aParamName, aParamVal, PARAM_STRING, PSM_DB)) {
+                    CcspTraceWarning(("Failed to get %s from PSM\n", aParamName));
+                    aParamVal[0] = '\0';
+                }
                 if (('\0' != aParamVal[0]) && (!strncmp(aParamVal, "true", 4)))
                 {
                     if (!GenAndUpdateIpv6PrefixIntoSysevent(aBridgeName))
@@ -930,19 +968,24 @@ void process_ipv6_subprefix(const char *v6Tpref, int pref_len)
         char interface_name[32] = {0};
         char out[128] = {0};
         char cmd[100];
-        FILE *fp = NULL;
+        char ipv6SubPrefix[16] = {0};
         errno_t rc = -1;
 
         memset(out1, 0, sizeof(out1));
-        fp = v_secure_popen("r", "syscfg get IPv6subPrefix");
-        _get_shell_output(fp, out, sizeof(out));
+        memset(ipv6SubPrefix, 0, sizeof(ipv6SubPrefix));
+        if (!GetValueFromDb("IPv6subPrefix", ipv6SubPrefix, PARAM_STRING, SYSCFG_DB)) {
+            CcspTraceError(("Failed to get IPv6subPrefix from syscfg\n"));
+            return;
+        }
         
-        if (!strcmp(out, "true"))
+        if (!strcmp(ipv6SubPrefix, "true"))
         {
             static int first = 0;
-
-            fp = v_secure_popen("r", "syscfg get IPv6_Interface");
-            _get_shell_output(fp, out, sizeof(out));
+            memset(out, 0, sizeof(out));
+            if (!GetValueFromDb("IPv6_Interface", out, PARAM_STRING, SYSCFG_DB)) {
+                CcspTraceError(("Failed to get IPv6_Interface from syscfg\n"));
+                return;
+            }
             pt = out;
 
             while ((token = strtok_r(pt, ",", &pt)))
@@ -954,13 +997,20 @@ void process_ipv6_subprefix(const char *v6Tpref, int pref_len)
 
 #ifdef _COSA_INTEL_XB3_ARM_
                     char LnFIfName[32] = {0}, LnFBrName[32] = {0};
-                    syscfg_get(NULL, "iot_ifname", LnFIfName, sizeof(LnFIfName));
+
+                    memset(LnFIfName, 0, sizeof(LnFIfName));
+                    if (!GetValueFromDb("iot_ifname", LnFIfName, PARAM_STRING, SYSCFG_DB)) {
+                        CcspTraceWarning(("Failed to get iot_ifname from syscfg, using token as interface name\n"));
+                        LnFIfName[0] = '\0';
+                    }
+
                     if ((LnFIfName[0] != '\0') && (strlen(LnFIfName) != 0))
                     {
                         if (strcmp((const char*)token, LnFIfName) == 0)
                         {
-                            syscfg_get(NULL, "iot_brname", LnFBrName, sizeof(LnFBrName));
-                            if ((LnFBrName[0] != '\0') && (strlen(LnFBrName) != 0))
+                            memset(LnFBrName, 0, sizeof(LnFBrName));
+                            if (GetValueFromDb("iot_brname", LnFBrName, PARAM_STRING, SYSCFG_DB) && 
+                                (LnFBrName[0] != '\0') && (strlen(LnFBrName) != 0))
                             {
                                 strncpy(interface_name, LnFBrName, sizeof(interface_name) - 1);
                             }
