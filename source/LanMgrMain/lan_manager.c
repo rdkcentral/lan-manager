@@ -472,6 +472,7 @@ int main(int argc, char *argv[])
     t2_init("lanmanager");
     LanManagerLogInit();
     Lan_Manager_Init();
+    subscribeToDhcpServerStateReady();
     LanConfigDataStoreInit();
     PopulateAllBridges();
     LanManagerInfo(("wait in loop \n"));
@@ -480,6 +481,7 @@ int main(int argc, char *argv[])
         sleep(1);
     }
     LanConfigDataStoreCleanup();
+    unsubscribeFromDhcpServerStateReady();
     lanManagerBusClose();
     if( findProcessId(argv[0]) > 0 )
     {
