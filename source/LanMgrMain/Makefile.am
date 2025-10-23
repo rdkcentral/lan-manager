@@ -27,11 +27,8 @@ AM_CPPFLAGS =   -I$(top_srcdir)/source/include \
 AM_CFLAGS = -D_ANSC_LINUX -D_ANSC_USER -D_ANSC_LITTLE_ENDIAN_ -DFEATURE_SUPPORT_RDKLOG $(DBUS_CFLAGS)
 AM_LDFLAGS = -lsysevent -lsyscfg -lsecure_wrapper -ltelemetry_msgsender
 AM_LDFLAGS = $(DBUS_LIBS)
-lan_manager_LDFLAGS = -lsysevent -lsyscfg -lrbus -lcommonutil -lutapi
+lan_manager_LDFLAGS = -lsysevent -lsyscfg -lrbus -lcommonutil -lutapi -lcjson
 lan_manager_SOURCES = lanmgr_log.c lan_manager.c lan_manager_bridge.c lanmgr_communication_apis.c lan_manager_dml.c lan_managerdb.c lan_managerds.c cosa_dhcpv6_apis.c
 
-lib_LTLIBRARIES = liblanconfig.la
-liblanconfig_la_SOURCES = lan_manager_interface.c
-liblanconfig_la_LDFLAGS = -version-info 1:0:0 -no-undefined -lrbus
 pkginclude_HEADERS = $(top_srcdir)/source/include/lan_manager_interface.h
 pkgincludedir = $(includedir)/lanmanager

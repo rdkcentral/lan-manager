@@ -27,6 +27,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <rbus.h>
+#include <cjson/cJSON.h>
 #include "lan_manager_interface.h"
 #include "lan_manager_dml.h"
 #include "lanmgr_log.h"
@@ -721,19 +722,116 @@ rbusError_t eventSubHandler(rbusHandle_t handle, rbusEventSubAction_t action, co
     return RBUS_ERROR_SUCCESS;
 }
 
-rbusError_t getLanConfigHandler(rbusHandle_t handle, char const* methodName, rbusObject_t inParams, rbusObject_t outParams, rbusMethodAsyncHandle_t asyncHandle)
+rbusError_t getHandlerLanConfigCount(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
 {
-    (void)handle; (void)methodName; (void)inParams; (void)asyncHandle;
-    size_t total_size = sizeof(int) + g_count * sizeof(LanConfig);
-    uint8_t* buffer = malloc(total_size);
-    memcpy(buffer, &g_count, sizeof(int));
-    memcpy(buffer + sizeof(int), gDM.lanConfigs, g_count * sizeof(LanConfig));
     rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+
+    (void)handle;
+    (void)opts;
+
+    LanManagerDebug(("%s: called. property=%s\n", __FUNCTION__, name));
+
     rbusValue_Init(&value);
-    rbusValue_SetBytes(value, buffer, total_size);
-    rbusObject_SetValue(outParams, "value", value);
+    rbusValue_SetInt32(value, g_count);
+
+    char dbg_val[256] = {0};
+    rbusValue_ToString(value, dbg_val, sizeof(dbg_val));
+    LanManagerDebug(("%s: for property %s, returning count value '%s'\n", __FUNCTION__, name, dbg_val));
+    rbusProperty_SetValue(property, value);
     rbusValue_Release(value);
-    free(buffer);
+    return RBUS_ERROR_SUCCESS;
+}
+
+rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+
+    (void)handle;
+    (void)opts;
+    
+    LanManagerDebug(("%s: called. property=%s\n", __FUNCTION__, name));
+    
+    // Create JSON object for DHCP configuration
+    cJSON *root = cJSON_CreateObject();
+    cJSON *dhcpArray = cJSON_CreateArray();
+    
+    // Add count of active LanConfigs
+    cJSON_AddNumberToObject(root, "num_entries", g_count);
+    
+    // Add DHCP payload array
+    for(int i = 0; i < MAX_TABLE_ROWS; ++i)
+    {
+        LanConfig* lanConfig = &gDM.lanConfigs[i];
+        
+        // Only include active LanConfigs (those with bridgeName set)
+        if(lanConfig->bridgeInfo.bridgeName[0] != '\0')
+        {
+            cJSON *dhcpItem = cJSON_CreateObject();
+            
+            // Add bridge info
+            cJSON *bridgeInfo = cJSON_CreateObject();
+            cJSON_AddNumberToObject(bridgeInfo, "networkBridgeType", lanConfig->bridgeInfo.networkBridgeType);
+            cJSON_AddNumberToObject(bridgeInfo, "userBridgeCategory", lanConfig->bridgeInfo.userBridgeCategory);
+            cJSON_AddStringToObject(bridgeInfo, "alias", lanConfig->bridgeInfo.alias);
+            cJSON_AddNumberToObject(bridgeInfo, "stpEnable", lanConfig->bridgeInfo.stpEnable);
+            cJSON_AddNumberToObject(bridgeInfo, "igdEnable", lanConfig->bridgeInfo.igdEnable);
+            cJSON_AddNumberToObject(bridgeInfo, "bridgeLifeTime", lanConfig->bridgeInfo.bridgeLifeTime);
+            cJSON_AddStringToObject(bridgeInfo, "bridgeName", lanConfig->bridgeInfo.bridgeName);
+            cJSON_AddItemToObject(dhcpItem, "bridgeInfo", bridgeInfo);
+            
+            // Add DHCP config
+            cJSON *dhcpConfig = cJSON_CreateObject();
+            
+            // DHCPv4 config
+            cJSON *dhcpv4Config = cJSON_CreateObject();
+            cJSON_AddBoolToObject(dhcpv4Config, "Dhcpv4_Enable", lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Enable);
+            cJSON_AddStringToObject(dhcpv4Config, "Dhcpv4_Start_Addr", lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr);
+            cJSON_AddStringToObject(dhcpv4Config, "Dhcpv4_End_Addr", lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr);
+            cJSON_AddNumberToObject(dhcpv4Config, "Dhcpv4_Lease_Time", lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time);
+            cJSON_AddItemToObject(dhcpConfig, "dhcpv4Config", dhcpv4Config);
+            
+            // DHCPv6 config
+            cJSON *dhcpv6Config = cJSON_CreateObject();
+            cJSON_AddStringToObject(dhcpv6Config, "Ipv6Prefix", lanConfig->dhcpConfig.dhcpv6Config.Ipv6Prefix);
+            cJSON_AddBoolToObject(dhcpv6Config, "StateFull", lanConfig->dhcpConfig.dhcpv6Config.StateFull);
+            cJSON_AddBoolToObject(dhcpv6Config, "StateLess", lanConfig->dhcpConfig.dhcpv6Config.StateLess);
+            cJSON_AddStringToObject(dhcpv6Config, "Dhcpv6_Start_Addr", lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr);
+            cJSON_AddStringToObject(dhcpv6Config, "Dhcpv6_End_Addr", lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr);
+            cJSON_AddNumberToObject(dhcpv6Config, "addrType", lanConfig->dhcpConfig.dhcpv6Config.addrType);
+            cJSON_AddItemToObject(dhcpConfig, "dhcpv6Config", dhcpv6Config);
+            
+            cJSON_AddItemToObject(dhcpItem, "dhcpConfig", dhcpConfig);
+            
+            // Add to array
+            cJSON_AddItemToArray(dhcpArray, dhcpItem);
+        }
+    }
+    
+    cJSON_AddItemToObject(root, "dhcpPayload", dhcpArray);
+    
+    // Convert to JSON string
+    char *jsonString = cJSON_Print(root);
+    if(!jsonString)
+    {
+        LanManagerError(("%s: Failed to create JSON string\n", __FUNCTION__));
+        cJSON_Delete(root);
+        return RBUS_ERROR_BUS_ERROR;
+    }
+    
+    LanManagerDebug(("%s: JSON output: %s\n", __FUNCTION__, jsonString));
+    
+    // Set return value
+    rbusValue_Init(&value);
+    rbusValue_SetString(value, jsonString);
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+    
+    // Cleanup
+    free(jsonString);
+    cJSON_Delete(root);
+    
     return RBUS_ERROR_SUCCESS;
 }
 
@@ -767,7 +865,8 @@ static rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.Interface", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.VlanId", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
-    {"Device.LanManager.LanConfigCopy()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, getLanConfigHandler}}
+    {"Device.LanManager.LanConfigCount", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfigCount, NULL, NULL, NULL, eventSubHandler, NULL}},
+    {"Device.LanManager.DhcpConfig", RBUS_ELEMENT_TYPE_PROPERTY, {getDhcpConfigHandler, NULL, NULL, NULL, eventSubHandler, NULL}}
 };
 
 extern rbusHandle_t rbus_handle;

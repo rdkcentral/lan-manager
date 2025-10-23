@@ -358,4 +358,51 @@ extern LanConfig g_bridges[];
  */
 void PopulateAllBridges();
 
+/**
+ * @brief Loads network configurations from JSON string into memory
+ * 
+ * This function parses a JSON string containing LAN configuration data
+ * and populates the g_bridges array with the specified network configurations.
+ * 
+ * The JSON format should follow this schema:
+ * {
+ *   "LanConfigs": [
+ *     {
+ *       "BridgeName": "br-home",
+ *       "Alias": "HomeLAN",
+ *       "NetworkBridgeType": 1,
+ *       "UserBridgeCategory": 10,
+ *       "NumOfIfaces": 3,
+ *       "IP_Enable": true,
+ *       "Ipv4Address": "192.168.0.1",
+ *       "IpSubNet": "255.255.255.0",
+ *       "Ipv6Address": "fd00:1::1",
+ *       "Dhcpv4_Enable": true,
+ *       "Dhcpv4_Start_Addr": "192.168.0.100",
+ *       "Dhcpv4_End_Addr": "192.168.0.199",
+ *       "Dhcpv4_Lease_Time": 86400,
+ *       "Ipv6Prefix": "fd00:1::",
+ *       "StateFull": true,
+ *       "StateLess": false,
+ *       "Dhcpv6_Start_Addr": "fd00:1::100",
+ *       "Dhcpv6_End_Addr": "fd00:1::1ff",
+ *       "Firewall_Level": 2,
+ *       "Firewall_Enable": true,
+ *       "VPN_Security_Enable": true,
+ *       "IGD_Enable": true,
+ *       "Status": 1,
+ *       "Ifaces": [
+ *         { "Instance": 1, "Interface": "eth0", "VlanId": 0, "InfType": "physical" },
+ *         { "Instance": 2, "Interface": "wlan0", "VlanId": 0, "InfType": "wireless" },
+ *         { "Instance": 3, "Interface": "guest0", "VlanId": 100, "InfType": "virtual" }
+ *       ]
+ *     }
+ *   ]
+ * }
+ * 
+ * @param jsonString The JSON string containing LAN configuration data
+ * @return void - The function populates the global g_bridges array
+ */
+void PopulateAllBridgesJson(const char* jsonString);
+
 #endif /* LAN_MANAGER_BRIDGE_H */

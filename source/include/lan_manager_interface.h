@@ -273,12 +273,4 @@ typedef struct {
     SecurityConfig securityConfig; /**< Security settings. */
 } FirewallPayload;
 
-/**
- * @brief Retrieves the LAN configuration from the provider.
- * @param[out] configs Pointer to an array of LanConfig structures to be filled.
- * @param[out] count Pointer to an integer that will hold the number of configurations retrieved.
- * @return true if the configuration was retrieved successfully, false otherwise.
- */
-bool GetLanConfigFromProvider(LanConfig *configs, int *count);
-
 #endif /* LAN_MANAGER_INTERFACE_H */
