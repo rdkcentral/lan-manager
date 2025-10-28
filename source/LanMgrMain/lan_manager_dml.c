@@ -30,6 +30,7 @@
 #include <cjson/cJSON.h>
 #include "lan_manager_interface.h"
 #include "lan_manager_dml.h"
+#include "lan_managerds.h"
 #include "lanmgr_log.h"
 
 int g_count = 0;
@@ -732,12 +733,22 @@ rbusError_t getHandlerLanConfigCount(rbusHandle_t handle, rbusProperty_t propert
 
     LanManagerDebug(("%s: called. property=%s\n", __FUNCTION__, name));
 
+    // Get count from data store
+    LanConfig *dataStoreTable = NULL;
+    int numEntries = 0;
+
+    LM_Status status = LanConfigDataStoreGetAll(&numEntries, &dataStoreTable);
+    if (status != LM_SUCCESS) {
+        LanManagerError(("%s: Failed to get data from data store\n", __FUNCTION__));
+        return RBUS_ERROR_BUS_ERROR;
+    }
+
     rbusValue_Init(&value);
-    rbusValue_SetInt32(value, g_count);
+    rbusValue_SetInt32(value, numEntries);
 
     char dbg_val[256] = {0};
     rbusValue_ToString(value, dbg_val, sizeof(dbg_val));
-    LanManagerDebug(("%s: for property %s, returning count value '%s'\n", __FUNCTION__, name, dbg_val));
+    LanManagerDebug(("%s: for property %s, returning count value '%s' from data store\n", __FUNCTION__, name, dbg_val));
     rbusProperty_SetValue(property, value);
     rbusValue_Release(value);
     return RBUS_ERROR_SUCCESS;
@@ -750,25 +761,32 @@ rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, r
 
     (void)handle;
     (void)opts;
-    
+
     LanManagerDebug(("%s: called. property=%s\n", __FUNCTION__, name));
-    
+
+    LanConfig *dataStoreTable = NULL;
+    int numEntries = 0;
+
+    LM_Status status = LanConfigDataStoreGetAll(&numEntries, &dataStoreTable);
+    if (status != LM_SUCCESS || dataStoreTable == NULL) {
+        LanManagerError(("%s: Failed to get data from data store\n", __FUNCTION__));
+        return RBUS_ERROR_BUS_ERROR;
+    }
+
     // Create JSON object for DHCP configuration
     cJSON *root = cJSON_CreateObject();
     cJSON *dhcpArray = cJSON_CreateArray();
     
-    // Add count of active LanConfigs
-    cJSON_AddNumberToObject(root, "num_entries", g_count);
+    // Add count of active LanConfigs from data store
+    cJSON_AddNumberToObject(root, "num_entries", numEntries);
     
-    // Add DHCP payload array
-    for(int i = 0; i < MAX_TABLE_ROWS; ++i)
+    // Add DHCP payload array using data store entries
+    for(int i = 0; i < numEntries; ++i)
     {
-        LanConfig* lanConfig = &gDM.lanConfigs[i];
+        LanConfig* lanConfig = &dataStoreTable[i];
         
-        // Only include active LanConfigs (those with bridgeName set)
-        if(lanConfig->bridgeInfo.bridgeName[0] != '\0')
-        {
-            cJSON *dhcpItem = cJSON_CreateObject();
+        // Data store only contains valid entries, so no need to check bridgeName
+        cJSON *dhcpItem = cJSON_CreateObject();
             
             // Add bridge info
             cJSON *bridgeInfo = cJSON_CreateObject();
@@ -777,10 +795,10 @@ rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, r
             cJSON_AddStringToObject(bridgeInfo, "alias", lanConfig->bridgeInfo.alias);
             cJSON_AddNumberToObject(bridgeInfo, "stpEnable", lanConfig->bridgeInfo.stpEnable);
             cJSON_AddNumberToObject(bridgeInfo, "igdEnable", lanConfig->bridgeInfo.igdEnable);
-            cJSON_AddNumberToObject(bridgeInfo, "bridgeLifeTime", lanConfig->bridgeInfo.bridgeLifeTime);
+/*          cJSON_AddNumberToObject(bridgeInfo, "bridgeLifeTime", lanConfig->bridgeInfo.bridgeLifeTime); */
             cJSON_AddStringToObject(bridgeInfo, "bridgeName", lanConfig->bridgeInfo.bridgeName);
             cJSON_AddItemToObject(dhcpItem, "bridgeInfo", bridgeInfo);
-            
+
             // Add DHCP config
             cJSON *dhcpConfig = cJSON_CreateObject();
             
@@ -806,7 +824,6 @@ rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, r
             
             // Add to array
             cJSON_AddItemToArray(dhcpArray, dhcpItem);
-        }
     }
     
     cJSON_AddItemToObject(root, "dhcpPayload", dhcpArray);
@@ -836,13 +853,14 @@ rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, r
 }
 
 static rbusDataElement_t dataElements[] = {
+/*
     {"Device.LanManager.LanConfig.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandlerLanConfig, tableRemoveRowHandlerLanConfig, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Alias", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.BridgeName", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.NetworkBridgeType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.UserBridgeCategory", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.NumOfIfaces", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, NULL, NULL, NULL, eventSubHandler, NULL}},
-    {"Device.LanManager.LanConfig.{i}.IP_Enable", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
+    {"Device.LanManager.LanConfig.{i}.IP_Enable", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHndlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Ipv4Address", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.IpSubNet", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Ipv6Address", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
@@ -865,6 +883,7 @@ static rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.Interface", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.VlanId", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
+*/
     {"Device.LanManager.LanConfigCount", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfigCount, NULL, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.DhcpConfig", RBUS_ELEMENT_TYPE_PROPERTY, {getDhcpConfigHandler, NULL, NULL, NULL, eventSubHandler, NULL}}
 };

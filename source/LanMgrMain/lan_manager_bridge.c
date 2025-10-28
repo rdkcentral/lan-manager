@@ -244,7 +244,7 @@ static void PopulateDhcpConfig(int i, LanConfig *cfg, const LanConfigSource *src
         result = GetValueFromDb(param_buf, &cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable, PARAM_BOOLEAN, src->dhcpConfig.Dhcpv4_Enable.src);
         if (!result) {
             LanManagerError(("Failed to get DHCP enable status for bridge %d. result=%d\n", i, (int)result));
-            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable = false;
+            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable = true;
         } else {
             LanManagerInfo(("[DEBUG][PopulateDhcpConfig] Got Dhcpv4_Enable for bridge %d: %d\n", i, cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable));
         }
@@ -404,20 +404,15 @@ void PopulateAllBridges()
     // Iterate over all bridge configuration entries
     for (int i = 0; lan_config_source_table[i].bridgeInfo.bridgeName.param != NULL; i++)
     {
-        if(i >= MAX_TABLE_ROWS)
-        {
-            LanManagerError(("[PopulateAllBridges] Exceeded max table rows (%d), stopping.\n", MAX_TABLE_ROWS));
-            break;
-        }
 
         LanManagerInfo(("[DEBUG][PopulateAllBridges] Processing bridge index %d\n", i));
-        LanConfig *cfg = &gDM.lanConfigs[i];
+        LanConfig cfg = {0};
         const LanConfigSource *src = &lan_config_source_table[i];
         char param_buf[256];
         bool result = false;
 
         /* Initialize the configuration */
-        snprintf(cfg->bridgeInfo.alias, sizeof(cfg->bridgeInfo.alias), "cpe-lan-%d", i);
+        snprintf(cfg.bridgeInfo.alias, sizeof(cfg.bridgeInfo.alias), "cpe-lan-%d", i);
         
         // Read Layer 2 network index and bridge info
         int l2net_idx = -1;
@@ -429,14 +424,13 @@ void PopulateAllBridges()
             if (!result || l2net_buf[0] == '\0')
             {
                 LanManagerError(("Failed to get l2net index for bridge %d, skipping bridge. result=%d\n", i, (int)result));
-                g_count--; /* Decrement because this instance failed to populate */
                 continue;
             }
             else
             {
                 l2net_idx = atoi(l2net_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] Got l2net_idx for bridge %d: %d (raw='%s')\n", i, l2net_idx, l2net_buf));
-                PopulateBridgeInfo(i, cfg, src, l2net_idx, param_buf);
+                PopulateBridgeInfo(i, &cfg, src, l2net_idx, param_buf);
             }
         }
 
@@ -455,77 +449,43 @@ void PopulateAllBridges()
             {
                 l3net_idx = atoi(l3net_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] Got l3net_idx for bridge %d: %d (raw='%s')\n", i, l3net_idx, l3net_buf));
-                PopulateIpConfig(i, cfg, src, l3net_idx, param_buf);
+                PopulateIpConfig(i, &cfg, src, l3net_idx, param_buf);
             }
         }
 
-        // Read DHCPv4 index and config
+        // Read DHCPv4 config: Always call PopulateDhcpConfig, even if dhcpv4_index is empty (i.e for brlan0/SYSCFG)
         int dhcpv4_idx = -1;
         char dhcpv4_idx_buf[8] = {0};
         if (src->dhcpConfig.dhcpv4_index.param && src->dhcpConfig.dhcpv4_index.param[0])
         {
             LanManagerInfo(("[DEBUG][PopulateAllBridges] Calling GetValueFromDb for dhcpv4_index: param=%s, src=%d\n", src->dhcpConfig.dhcpv4_index.param, src->dhcpConfig.dhcpv4_index.src));
             result = GetValueFromDb((char*)src->dhcpConfig.dhcpv4_index.param, dhcpv4_idx_buf, PARAM_STRING, src->dhcpConfig.dhcpv4_index.src);
-            if (!result || dhcpv4_idx_buf[0] == '\0')
-            {
-                LanManagerError(("Failed to get dhcpv4 index for bridge %d, skipping DHCP config. result=%d\n", i, (int)result));
-            }
-            else
-            {
+            if (result && dhcpv4_idx_buf[0] != '\0') {
                 dhcpv4_idx = atoi(dhcpv4_idx_buf);
                 LanManagerInfo(("[DEBUG][PopulateAllBridges] dhcpv4_idx for bridge %d: %d\n", i, dhcpv4_idx));
-                PopulateDhcpConfig(i, cfg, src, dhcpv4_idx, param_buf);
             }
         }
+
+        // Read DHCPv4 config
+        PopulateDhcpConfig(i, &cfg, src, dhcpv4_idx, param_buf);
 
         // Read DHCPv6 config
-        PopulateDhcpv6Config(i, cfg, src, param_buf);
+        PopulateDhcpv6Config(i, &cfg, src, param_buf);
 
         // Read firewall config
-        PopulateFirewallConfig(i, cfg, src, param_buf);
+        PopulateFirewallConfig(i, &cfg, src, param_buf);
 
         // Read security config
-        PopulateSecurityConfig(i, cfg, src, param_buf);
+        PopulateSecurityConfig(i, &cfg, src, param_buf);
 
         // Read IGD config
-        PopulateIgdConfig(i, cfg, src, param_buf);
-
-        /* Now that the config is populated, register it with rbus */
-        uint32_t assignedInstNum = 0;
-        rbusError_t ret = rbusTable_addRow(rbus_handle, "Device.LanManager.LanConfig.", cfg->bridgeInfo.alias, &assignedInstNum);
-        if(ret == RBUS_ERROR_SUCCESS)
-        {
-            LanManagerInfo(("[PopulateAllBridges] Successfully added row for %s, instance number %u\n", cfg->bridgeInfo.alias, assignedInstNum));
-
-            // Add the interfaces for this bridge to the Iface table
-            for (int j = 0; j < cfg->numOfIfaces; ++j)
-            {
-                if (cfg->interfaces[j].interfaceName[0] != '\0')
-                {
-                    char ifaceTableName[256];
-                    snprintf(ifaceTableName, sizeof(ifaceTableName), "Device.LanManager.LanConfig.%u.Iface.", assignedInstNum);
-
-                    uint32_t assignedIfaceInstNum = 0;
-                    rbusError_t iface_ret = rbusTable_addRow(rbus_handle, ifaceTableName, NULL, &assignedIfaceInstNum);
-                    if(iface_ret == RBUS_ERROR_SUCCESS)
-                    {
-                        LanManagerInfo(("[PopulateAllBridges] Successfully added Iface row for %s, instance number %u\n", ifaceTableName, assignedIfaceInstNum));
-                    }
-                    else
-                    {
-                        LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for Iface table %s with error %d\n", ifaceTableName, iface_ret));
-                    }
-                }
-            }
-        }
-        else
-        {
-            LanManagerError(("[PopulateAllBridges] rbusTable_addRow failed for alias %s with error %d\n", cfg->bridgeInfo.alias, ret));
-        }
+        PopulateIgdConfig(i, &cfg, src, param_buf);
 
         /* Persist populated configuration regardless of rbus add outcome */
-        PersistLanConfig(cfg);
+        PersistLanConfig(&cfg);
+
     }
+    LanConfigDataStoreDump();
 }
 
 void PopulateAllBridgesJson(const char* jsonString)
@@ -553,15 +513,14 @@ void PopulateAllBridgesJson(const char* jsonString)
     int arraySize = cJSON_GetArraySize(lanConfigs);
     LanManagerInfo(("[DEBUG][PopulateAllBridgesJson] Found %d LAN configurations\n", arraySize));
     
-    for (int i = 0; i < arraySize && i < MAX_TABLE_ROWS; i++) {
+    for (int i = 0; i < arraySize; i++) {
         cJSON *lanConfigItem = cJSON_GetArrayItem(lanConfigs, i);
         if (!cJSON_IsObject(lanConfigItem)) {
             LanManagerError(("PopulateAllBridgesJson: LanConfig item %d is not an object\n", i));
             continue;
         }
         
-        LanConfig *cfg = &gDM.lanConfigs[i];
-        memset(cfg, 0, sizeof(LanConfig));
+        LanConfig cfg = {0};
         
         // Parse basic bridge information
         cJSON *bridgeName = cJSON_GetObjectItem(lanConfigItem, "BridgeName");
@@ -572,27 +531,27 @@ void PopulateAllBridgesJson(const char* jsonString)
         cJSON *status = cJSON_GetObjectItem(lanConfigItem, "Status");
         
         if (cJSON_IsString(bridgeName) && bridgeName->valuestring) {
-            strncpy(cfg->bridgeInfo.bridgeName, bridgeName->valuestring, sizeof(cfg->bridgeInfo.bridgeName) - 1);
+            strncpy(cfg.bridgeInfo.bridgeName, bridgeName->valuestring, sizeof(cfg.bridgeInfo.bridgeName) - 1);
         }
         
         if (cJSON_IsString(alias) && alias->valuestring) {
-            strncpy(cfg->bridgeInfo.alias, alias->valuestring, sizeof(cfg->bridgeInfo.alias) - 1);
+            strncpy(cfg.bridgeInfo.alias, alias->valuestring, sizeof(cfg.bridgeInfo.alias) - 1);
         }
         
         if (cJSON_IsNumber(networkBridgeType)) {
-            cfg->bridgeInfo.networkBridgeType = networkBridgeType->valueint;
+            cfg.bridgeInfo.networkBridgeType = networkBridgeType->valueint;
         }
         
         if (cJSON_IsNumber(userBridgeCategory)) {
-            cfg->bridgeInfo.userBridgeCategory = (enum UserBridgeCategory)userBridgeCategory->valueint;
+            cfg.bridgeInfo.userBridgeCategory = (enum UserBridgeCategory)userBridgeCategory->valueint;
         }
         
         if (cJSON_IsNumber(numOfIfaces)) {
-            cfg->numOfIfaces = numOfIfaces->valueint;
+            cfg.numOfIfaces = numOfIfaces->valueint;
         }
         
         if (cJSON_IsNumber(status)) {
-            cfg->status = status->valueint;
+            cfg.status = status->valueint;
         }
         
         // Parse IP configuration
@@ -602,19 +561,19 @@ void PopulateAllBridgesJson(const char* jsonString)
         cJSON *ipv6Address = cJSON_GetObjectItem(lanConfigItem, "Ipv6Address");
         
         if (cJSON_IsBool(ipEnable)) {
-            cfg->ipConfig.Ip_Enable = cJSON_IsTrue(ipEnable);
+            cfg.ipConfig.Ip_Enable = cJSON_IsTrue(ipEnable);
         }
         
         if (cJSON_IsString(ipv4Address) && ipv4Address->valuestring) {
-            strncpy(cfg->ipConfig.Ipv4Address, ipv4Address->valuestring, sizeof(cfg->ipConfig.Ipv4Address) - 1);
+            strncpy(cfg.ipConfig.Ipv4Address, ipv4Address->valuestring, sizeof(cfg.ipConfig.Ipv4Address) - 1);
         }
         
         if (cJSON_IsString(ipSubNet) && ipSubNet->valuestring) {
-            strncpy(cfg->ipConfig.IpSubNet, ipSubNet->valuestring, sizeof(cfg->ipConfig.IpSubNet) - 1);
+            strncpy(cfg.ipConfig.IpSubNet, ipSubNet->valuestring, sizeof(cfg.ipConfig.IpSubNet) - 1);
         }
         
         if (cJSON_IsString(ipv6Address) && ipv6Address->valuestring) {
-            strncpy(cfg->ipConfig.Ipv6Address, ipv6Address->valuestring, sizeof(cfg->ipConfig.Ipv6Address) - 1);
+            strncpy(cfg.ipConfig.Ipv6Address, ipv6Address->valuestring, sizeof(cfg.ipConfig.Ipv6Address) - 1);
         }
         
         // Parse DHCP configuration
@@ -624,19 +583,19 @@ void PopulateAllBridgesJson(const char* jsonString)
         cJSON *dhcpv4LeaseTime = cJSON_GetObjectItem(lanConfigItem, "Dhcpv4_Lease_Time");
         
         if (cJSON_IsBool(dhcpv4Enable)) {
-            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Enable = cJSON_IsTrue(dhcpv4Enable);
+            cfg.dhcpConfig.dhcpv4Config.Dhcpv4_Enable = cJSON_IsTrue(dhcpv4Enable);
         }
         
         if (cJSON_IsString(dhcpv4StartAddr) && dhcpv4StartAddr->valuestring) {
-            strncpy(cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr, dhcpv4StartAddr->valuestring, sizeof(cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr) - 1);
+            strncpy(cfg.dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr, dhcpv4StartAddr->valuestring, sizeof(cfg.dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr) - 1);
         }
         
         if (cJSON_IsString(dhcpv4EndAddr) && dhcpv4EndAddr->valuestring) {
-            strncpy(cfg->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr, dhcpv4EndAddr->valuestring, sizeof(cfg->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr) - 1);
+            strncpy(cfg.dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr, dhcpv4EndAddr->valuestring, sizeof(cfg.dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr) - 1);
         }
         
         if (cJSON_IsNumber(dhcpv4LeaseTime)) {
-            cfg->dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time = dhcpv4LeaseTime->valueint;
+            cfg.dhcpConfig.dhcpv4Config.Dhcpv4_Lease_Time = dhcpv4LeaseTime->valueint;
         }
         
         // Parse DHCPv6 configuration
@@ -647,23 +606,23 @@ void PopulateAllBridgesJson(const char* jsonString)
         cJSON *dhcpv6EndAddr = cJSON_GetObjectItem(lanConfigItem, "Dhcpv6_End_Addr");
         
         if (cJSON_IsString(ipv6Prefix) && ipv6Prefix->valuestring) {
-            strncpy(cfg->dhcpConfig.dhcpv6Config.Ipv6Prefix, ipv6Prefix->valuestring, sizeof(cfg->dhcpConfig.dhcpv6Config.Ipv6Prefix) - 1);
+            strncpy(cfg.dhcpConfig.dhcpv6Config.Ipv6Prefix, ipv6Prefix->valuestring, sizeof(cfg.dhcpConfig.dhcpv6Config.Ipv6Prefix) - 1);
         }
         
         if (cJSON_IsBool(stateFull)) {
-            cfg->dhcpConfig.dhcpv6Config.StateFull = cJSON_IsTrue(stateFull);
+            cfg.dhcpConfig.dhcpv6Config.StateFull = cJSON_IsTrue(stateFull);
         }
         
         if (cJSON_IsBool(stateLess)) {
-            cfg->dhcpConfig.dhcpv6Config.StateLess = cJSON_IsTrue(stateLess);
+            cfg.dhcpConfig.dhcpv6Config.StateLess = cJSON_IsTrue(stateLess);
         }
         
         if (cJSON_IsString(dhcpv6StartAddr) && dhcpv6StartAddr->valuestring) {
-            strncpy(cfg->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr, dhcpv6StartAddr->valuestring, sizeof(cfg->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr) - 1);
+            strncpy(cfg.dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr, dhcpv6StartAddr->valuestring, sizeof(cfg.dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr) - 1);
         }
         
         if (cJSON_IsString(dhcpv6EndAddr) && dhcpv6EndAddr->valuestring) {
-            strncpy(cfg->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr, dhcpv6EndAddr->valuestring, sizeof(cfg->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr) - 1);
+            strncpy(cfg.dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr, dhcpv6EndAddr->valuestring, sizeof(cfg.dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr) - 1);
         }
         
         // Parse firewall configuration
@@ -671,23 +630,23 @@ void PopulateAllBridgesJson(const char* jsonString)
         cJSON *firewallEnable = cJSON_GetObjectItem(lanConfigItem, "Firewall_Enable");
         
         if (cJSON_IsNumber(firewallLevel)) {
-            cfg->firewallConfig.Firewall_Level = firewallLevel->valueint;
+            cfg.firewallConfig.Firewall_Level = firewallLevel->valueint;
         }
         
         if (cJSON_IsBool(firewallEnable)) {
-            cfg->firewallConfig.Firewall_Enable = cJSON_IsTrue(firewallEnable);
+            cfg.firewallConfig.Firewall_Enable = cJSON_IsTrue(firewallEnable);
         }
         
         // Parse security configuration
         cJSON *vpnSecurityEnable = cJSON_GetObjectItem(lanConfigItem, "VPN_Security_Enable");
         if (cJSON_IsBool(vpnSecurityEnable)) {
-            cfg->securityConfig.VPN_Security_Enable = cJSON_IsTrue(vpnSecurityEnable);
+            cfg.securityConfig.VPN_Security_Enable = cJSON_IsTrue(vpnSecurityEnable);
         }
         
         // Parse IGD configuration
         cJSON *igdEnable = cJSON_GetObjectItem(lanConfigItem, "IGD_Enable");
         if (cJSON_IsBool(igdEnable)) {
-            cfg->bridgeInfo.igdEnable = cJSON_IsTrue(igdEnable);
+            cfg.bridgeInfo.igdEnable = cJSON_IsTrue(igdEnable);
         }
         
         // Parse interfaces
@@ -703,55 +662,31 @@ void PopulateAllBridgesJson(const char* jsonString)
                 cJSON *infType = cJSON_GetObjectItem(ifaceItem, "InfType");
                 
                 if (cJSON_IsString(interface) && interface->valuestring) {
-                    strncpy(cfg->interfaces[j].interfaceName, interface->valuestring, sizeof(cfg->interfaces[j].interfaceName) - 1);
+                    strncpy(cfg.interfaces[j].interfaceName, interface->valuestring, sizeof(cfg.interfaces[j].interfaceName) - 1);
                 }
                 
                 if (cJSON_IsNumber(vlanId)) {
-                    cfg->interfaces[j].vlanId = vlanId->valueint;
+                    cfg.interfaces[j].vlanId = vlanId->valueint;
                 }
                 
                 if (cJSON_IsString(infType) && infType->valuestring) {
                     // Convert string interface type to integer enum
                     if (strcmp(infType->valuestring, "physical") == 0) {
-                        cfg->interfaces[j].InfType = 1;
+                        cfg.interfaces[j].InfType = 1;
                     } else if (strcmp(infType->valuestring, "wireless") == 0) {
-                        cfg->interfaces[j].InfType = 2;
+                        cfg.interfaces[j].InfType = 2;
                     } else if (strcmp(infType->valuestring, "virtual") == 0) {
-                        cfg->interfaces[j].InfType = 3;
+                        cfg.interfaces[j].InfType = 3;
                     }
                 }
             }
         }
         
-        LanManagerInfo(("[DEBUG][PopulateAllBridgesJson] Populated bridge %d: %s (%s)\n", i, cfg->bridgeInfo.bridgeName, cfg->bridgeInfo.alias));
-        
-        // Register with RBUS
-        uint32_t assignedInstNum = 0;
-        rbusError_t ret = rbusTable_addRow(rbus_handle, "Device.LanManager.LanConfig.", cfg->bridgeInfo.alias, &assignedInstNum);
-        if(ret == RBUS_ERROR_SUCCESS) {
-            LanManagerInfo(("[PopulateAllBridgesJson] Successfully added row for %s, instance number %u\n", cfg->bridgeInfo.alias, assignedInstNum));
-            
-            // Add interface rows to RBUS
-            for (int j = 0; j < cfg->numOfIfaces && j < MAX_IFACE_COUNT; j++) {
-                if (cfg->interfaces[j].interfaceName[0] != '\0') {
-                    char ifaceTableName[256];
-                    snprintf(ifaceTableName, sizeof(ifaceTableName), "Device.LanManager.LanConfig.%u.Iface.", assignedInstNum);
-                    
-                    uint32_t assignedIfaceInstNum = 0;
-                    rbusError_t iface_ret = rbusTable_addRow(rbus_handle, ifaceTableName, NULL, &assignedIfaceInstNum);
-                    if(iface_ret == RBUS_ERROR_SUCCESS) {
-                        LanManagerInfo(("[PopulateAllBridgesJson] Successfully added Iface row for %s, instance number %u\n", ifaceTableName, assignedIfaceInstNum));
-                    } else {
-                        LanManagerError(("[PopulateAllBridgesJson] rbusTable_addRow failed for Iface table %s with error %d\n", ifaceTableName, iface_ret));
-                    }
-                }
-            }
-        } else {
-            LanManagerError(("[PopulateAllBridgesJson] rbusTable_addRow failed for alias %s with error %d\n", cfg->bridgeInfo.alias, ret));
-        }
-        
+        LanManagerInfo(("[DEBUG][PopulateAllBridgesJson] Populated bridge %d: %s (%s)\n", i, cfg.bridgeInfo.bridgeName, cfg.bridgeInfo.alias));
+
         // Persist the configuration
-        PersistLanConfig(cfg);
+        PersistLanConfig(&cfg);
+
     }
     
     cJSON_Delete(json);

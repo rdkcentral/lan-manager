@@ -21,9 +21,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "lan_managerds.h"
-#include "lan_manager_dml.h"
 #include "lan_manager_interface.h"
-#include "lan_manager_dml.h"
 #include "lanmgr_log.h"
 
 static LanConfig *LanDB = NULL;
@@ -43,7 +41,7 @@ static int capacity = BASE_MAX_BRIDGES;
  * Nil
  **************************************************************/
 LM_Status LanConfigDataStoreInit() {
-    gDM.lanConfigs = LanDB = (LanConfig*)malloc(capacity * sizeof(LanConfig));
+    LanDB = (LanConfig*)malloc(capacity * sizeof(LanConfig));
     if(LanDB == NULL)
     {
         LanManagerError(("%s: Returned Failure\n", __FUNCTION__));
@@ -106,7 +104,7 @@ LM_Status LanConfigDataStoreAdd(const LanConfig *LanInfo) {
             LanManagerError(("%s: Realloc Failed\n", __FUNCTION__));
             return LM_FAILURE;
         }
-        gDM.lanConfigs = LanDB = temp;
+        LanDB = temp;
         capacity++; // Only increment after successful realloc
         LanManagerInfo(("%s: Realloc Success\n", __FUNCTION__));
     }
@@ -209,7 +207,7 @@ LM_Status LanConfigDataStoreRemove(const LanConfig *LanInfo) {
             if (capacity > BASE_MAX_BRIDGES && count <= BASE_MAX_BRIDGES) {
                 LanConfig *temp = (LanConfig*)realloc(LanDB, BASE_MAX_BRIDGES * sizeof(LanConfig));
                 if (temp != NULL) {
-                    gDM.lanConfigs = LanDB = temp;
+                    LanDB = temp;
                     capacity = BASE_MAX_BRIDGES;
                     LanManagerInfo(("%s: Realloc Success\n", __FUNCTION__));
                 }
