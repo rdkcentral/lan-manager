@@ -20,6 +20,7 @@
 #ifndef LAN_MANAGER_INTERFACE_H
 #define LAN_MANAGER_INTERFACE_H
 
+#include <stdint.h>
 #include <stdbool.h>
 #include "lan_manager_custom_bridge.h" /* For custom bridge type macros */
 
@@ -234,6 +235,7 @@ typedef struct {
  * @brief Structure for LAN bridge configuration.
  */
 typedef struct {
+    uint32_t instNum;                       /**< Instance number for RBUS addressing. */
     BridgeInfo bridgeInfo;                  /**< Information about the bridge. */
     int numOfIfaces;                        /**< Number of interfaces in the bridge. */
     Iface interfaces[MAX_IFACE_COUNT];      /**< Array of interface configurations. */

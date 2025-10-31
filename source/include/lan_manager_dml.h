@@ -20,14 +20,7 @@ typedef struct
     char alias[ALIAS_MAX_LEN];
 } TableRowID;
 
-typedef struct DataModel
-{
-    uint32_t lanConfigInstNum;
-    LanConfig *lanConfigs;
-} DataModel;
-
-extern DataModel gDM;
-extern int g_count;
+extern uint32_t g_lanConfigInstNum;
 
 int lan_manager_register_dml();
 void lan_manager_unregister_dml();

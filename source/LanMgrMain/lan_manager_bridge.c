@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <cjson/cJSON.h>
+#include <rbus.h>
 #include "lanmgr_log.h"
 #include "commonutil.h"
 #include "lan_manager_interface.h"
@@ -32,57 +33,70 @@
 #include "lan_managerds.h"
 
 /*
- * PersistLanConfig: Writes current LanConfig into persistent datastore via
- * individual SetLanConfig* APIs. Failures are logged but non-fatal so that
- * partial persistence does not block remaining sections.
+ * PersistLanConfig: Adds current LanConfig into the in-memory datastore.
+ * During boot, this is called once per bridge to load configurations from
+ * persistent storage (PSM/SYSCFG) into the runtime datastore.
  */
 static void PersistLanConfig(const LanConfig *cfg)
 {
     if(!cfg) return;
-    const char *alias = cfg->bridgeInfo.alias;
-    LM_Status st;
+    
+    LM_Status st = LanConfigDataStoreAdd(cfg);
+    if(st != LM_SUCCESS) {
+        LanManagerError(("PersistLanConfig: LanConfigDataStoreAdd failed (%d) for %s\n", 
+            st, cfg->bridgeInfo.alias));
+    }
+}
 
-    st = SetLanConfigBridgeInfo(alias, &cfg->bridgeInfo);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigBridgeInfo failed (%d) for %s\n", st, alias));
+/*
+ * RegisterBridgeAndInterfacesWithRbus: Registers a bridge and all its interfaces with RBUS.
+ * This function is called after loading a bridge configuration to make it accessible
+ * via the Device.LanManager.LanConfig.{i}. DML interface.
+ */
+static void RegisterBridgeAndInterfacesWithRbus(const LanConfig *cfg, const char *source)
+{
+    if(!cfg) return;
 
-    st = SetLanConfigInterfaceCountInfo(alias, &cfg->numOfIfaces);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigInterfaceCountInfo failed (%d) for %s\n", st, alias));
+    /* Register bridge with RBUS */
+    rbusError_t rc = rbusTable_registerRow(
+        rbus_handle,
+        "Device.LanManager.LanConfig",
+        cfg->instNum,
+        cfg->bridgeInfo.alias
+    );
 
-    st = SetLanConfigInterfaceInfo(alias, cfg->interfaces);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigInterfaceInfo failed (%d) for %s\n", st, alias));
+    if (rc != RBUS_ERROR_SUCCESS) {
+        LanManagerError(("%s: Failed to register bridge row (instNum=%d, alias=%s): %d\n",
+            source, cfg->instNum, cfg->bridgeInfo.alias, rc));
+    } else {
+        LanManagerInfo(("[DEBUG][%s] Successfully registered bridge instNum=%d\n", source, cfg->instNum));
+    }
 
-    st = SetLanConfigDhcpInfo(alias, &cfg->dhcpConfig);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigDhcpInfo failed (%d) for %s\n", st, alias));
+    /* Register each interface with RBUS */
+    char ifaceTableName[256];
+    for (int j = 0; j < cfg->numOfIfaces; j++) {
+        if (cfg->interfaces[j].interfaceName[0] != '\0') {
+            snprintf(ifaceTableName, sizeof(ifaceTableName), "Device.LanManager.LanConfig.%d.Iface", cfg->instNum);
 
-    st = SetLanConfigIPConfigInfo(alias, &cfg->ipConfig);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigIPConfigInfo failed (%d) for %s\n", st, alias));
+            char ifaceAlias[64];
+            snprintf(ifaceAlias, sizeof(ifaceAlias), "iface-%d", j + 1);
 
-    st = SetLanConfigDhcpv6ConfigInfo(alias, &cfg->dhcpConfig.dhcpv6Config);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigDhcpv6ConfigInfo failed (%d) for %s\n", st, alias));
+            rc = rbusTable_registerRow(
+                rbus_handle,
+                ifaceTableName,
+                j + 1,  // instNum for interface (1-based)
+                ifaceAlias
+            );
 
-    st = SetLanConfigFirewallConfigInfo(alias, &cfg->firewallConfig);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigFirewallConfigInfo failed (%d) for %s\n", st, alias));
-
-    st = SetLanConfigSecurityConfigInfo(alias, &cfg->securityConfig);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigSecurityConfigInfo failed (%d) for %s\n", st, alias));
-
-#ifdef ENABLE_IGD_DB_PERSISTENCE
-    st = SetLanConfigIGDEnableConfigInfo(alias, &cfg->IGD_Enable);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigIGDEnableConfigInfo failed (%d) for %s\n", st, alias));
-#endif
-
-    st = SetLanConfigStatusConfigInfo(alias, &cfg->status);
-    if(st != LM_SUCCESS)
-        LanManagerError(("PersistLanConfig: SetLanConfigStatusConfigInfo failed (%d) for %s\n", st, alias));
+            if (rc != RBUS_ERROR_SUCCESS) {
+                LanManagerError(("%s: Failed to register interface row (bridge=%d, iface=%d, name=%s): %d\n",
+                    source, cfg->instNum, j + 1, cfg->interfaces[j].interfaceName, rc));
+            } else {
+                LanManagerInfo(("[DEBUG][%s] Successfully registered interface %d for bridge %d\n",
+                    source, j + 1, cfg->instNum));
+            }
+        }
+    }
 }
 
 /**
@@ -412,6 +426,7 @@ void PopulateAllBridges()
         bool result = false;
 
         /* Initialize the configuration */
+        cfg.instNum = ++g_lanConfigInstNum;
         snprintf(cfg.bridgeInfo.alias, sizeof(cfg.bridgeInfo.alias), "cpe-lan-%d", i);
         
         // Read Layer 2 network index and bridge info
@@ -484,6 +499,9 @@ void PopulateAllBridges()
         /* Persist populated configuration regardless of rbus add outcome */
         PersistLanConfig(&cfg);
 
+        /* Register bridge and interfaces with RBUS */
+        RegisterBridgeAndInterfacesWithRbus(&cfg, "PopulateAllBridges");
+
     }
     LanConfigDataStoreDump();
 }
@@ -521,6 +539,8 @@ void PopulateAllBridgesJson(const char* jsonString)
         }
         
         LanConfig cfg = {0};
+
+        cfg.instNum = ++g_lanConfigInstNum;
         
         // Parse basic bridge information
         cJSON *bridgeName = cJSON_GetObjectItem(lanConfigItem, "BridgeName");
@@ -651,6 +671,7 @@ void PopulateAllBridgesJson(const char* jsonString)
         
         // Parse interfaces
         cJSON *ifaces = cJSON_GetObjectItem(lanConfigItem, "Ifaces");
+        cfg.numOfIfaces = 0;  // Reset and count actual interfaces parsed
         if (cJSON_IsArray(ifaces)) {
             int ifaceArraySize = cJSON_GetArraySize(ifaces);
             for (int j = 0; j < ifaceArraySize && j < MAX_IFACE_COUNT; j++) {
@@ -663,6 +684,7 @@ void PopulateAllBridgesJson(const char* jsonString)
                 
                 if (cJSON_IsString(interface) && interface->valuestring) {
                     strncpy(cfg.interfaces[j].interfaceName, interface->valuestring, sizeof(cfg.interfaces[j].interfaceName) - 1);
+                    cfg.numOfIfaces++;  // Increment for each valid interface
                 }
                 
                 if (cJSON_IsNumber(vlanId)) {
@@ -686,6 +708,9 @@ void PopulateAllBridgesJson(const char* jsonString)
 
         // Persist the configuration
         PersistLanConfig(&cfg);
+
+        /* Register bridge and interfaces with RBUS */
+        RegisterBridgeAndInterfacesWithRbus(&cfg, "PopulateAllBridgesJson");
 
     }
     

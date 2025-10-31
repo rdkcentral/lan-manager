@@ -33,8 +33,7 @@
 #include "lan_managerds.h"
 #include "lanmgr_log.h"
 
-int g_count = 0;
-DataModel gDM;
+uint32_t g_lanConfigInstNum = 0;
 
 void getTableRowID(char const* name, int start, TableRowID* rowID)
 {
@@ -134,42 +133,28 @@ bool propertyNameEquals(char const* full, char const* partial)
     return result;
 }
 
-void printDataModel()
-{
-    int i;
-    LanManagerDebug(("%s: begin datamodel\n", __FUNCTION__));
-    for(i = 0; i < MAX_TABLE_ROWS; ++i)
-    {
-        LanConfig* lanConfig = &gDM.lanConfigs[i];
-        if(lanConfig->bridgeInfo.bridgeName[0] != '\0') // Assuming bridgeName is set when in use
-        {
-            int j;
-            LanManagerDebug(("%s: %d: instNum=%s, alias=%s, bridgeName=%s\n", __FUNCTION__, i, lanConfig->bridgeInfo.bridgeName, lanConfig->bridgeInfo.alias, lanConfig->bridgeInfo.bridgeName));
-
-            for(j = 0; j < lanConfig->numOfIfaces; ++j)
-            {
-                Iface* iface = &lanConfig->interfaces[j];
-                LanManagerDebug(("%s: \t%d: InfType=%d, Interface=%s, vlanId=%d\n", __FUNCTION__, j, iface->InfType, iface->interfaceName, iface->vlanId));
-            }
-        }
-    }
-    LanManagerDebug(("%s: end datamodel\n", __FUNCTION__));
-}
-
 LanConfig* findLanConfig(char const* rowName)
 {
     TableRowID rowID;
+    LanConfig *dataStoreTable = NULL;
+    int numEntries = 0;
     int i;
 
     getTableRowID(rowName, 3, &rowID);
 
-    for(i = 0; i < MAX_TABLE_ROWS; ++i)
+    LM_Status status = LanConfigDataStoreGetAll(&numEntries, &dataStoreTable);
+    if (status != LM_SUCCESS || dataStoreTable == NULL) {
+        LanManagerError(("%s: Failed to get data from data store\n", __FUNCTION__));
+        return NULL;
+    }
+
+    for(i = 0; i < numEntries; ++i)
     {
-        LanConfig* lanConfig = &gDM.lanConfigs[i];
-        LanManagerDebug(("%s: checking index %d, instNum %d, alias %s\n", __FUNCTION__, i, i+1, lanConfig->bridgeInfo.alias));
-        // Assuming instance number is stored in a way accessible for comparison
-        // For simplicity, let's use the index as instance number for now
-        if(lanConfig->bridgeInfo.bridgeName[0] != '\0' && compareTableRowID(&rowID, i + 1, lanConfig->bridgeInfo.alias))
+        LanConfig* lanConfig = &dataStoreTable[i];
+        LanManagerDebug(("%s: checking index %d, instNum %d, alias %s\n", 
+            __FUNCTION__, i, lanConfig->instNum, lanConfig->bridgeInfo.alias));
+        
+        if(compareTableRowID(&rowID, lanConfig->instNum, lanConfig->bridgeInfo.alias))
             return lanConfig;
     }
 
@@ -206,39 +191,43 @@ Iface* findIface(char const* rowName, LanConfig** lanConfig)
 
 rbusError_t tableAddRowHandlerLanConfig(rbusHandle_t handle, char const* tableName, char const* aliasName, uint32_t* instNum)
 {
-    int i;
+    LanConfig newConfig;
     (void)handle;
+    (void)tableName;
 
     LanManagerDebug(("%s: called. tableName=%s aliasName=%s\n", __FUNCTION__, tableName, aliasName));
 
-    if(g_count >= MAX_TABLE_ROWS)
+    // Initialize new config
+    memset(&newConfig, 0, sizeof(LanConfig));
+
+    g_lanConfigInstNum++;
+    newConfig.instNum = g_lanConfigInstNum;  // Store instance number
+    snprintf(newConfig.bridgeInfo.bridgeName, MAX_NAME_LEN, "br%d", g_lanConfigInstNum);
+    
+    // Set alias: use provided alias or generate unique one
+    if(aliasName && aliasName[0] != '\0')
     {
-        LanManagerError(("%s: Maximum number of rows reached.\n", __FUNCTION__));
-        return RBUS_ERROR_OUT_OF_RESOURCES;
+        strncpy(newConfig.bridgeInfo.alias, aliasName, ALIAS_MAX_LEN - 1);
+        newConfig.bridgeInfo.alias[ALIAS_MAX_LEN - 1] = '\0';
     }
-    for(i = 0; i < MAX_TABLE_ROWS; ++i)
+    else
     {
-        LanConfig* lanConfig = &gDM.lanConfigs[i];
-
-        if(lanConfig->bridgeInfo.bridgeName[0] == '\0')
-        {
-            memset(lanConfig, 0, sizeof(LanConfig));
-
-            gDM.lanConfigInstNum++;
-            snprintf(lanConfig->bridgeInfo.bridgeName, MAX_NAME_LEN, "br%d", gDM.lanConfigInstNum);
-            if(aliasName)
-                strncpy(lanConfig->bridgeInfo.alias, aliasName, ALIAS_MAX_LEN);
-
-            *instNum = gDM.lanConfigInstNum;
-            g_count++;
-            LanManagerDebug(("%s: Added new row with instNum %d at index %d\n", __FUNCTION__, *instNum, i));
-            printDataModel();
-            return RBUS_ERROR_SUCCESS;
-        }
+        // Generate unique alias based on instance number
+        snprintf(newConfig.bridgeInfo.alias, ALIAS_MAX_LEN, "cpe-LanConfig-%d", g_lanConfigInstNum);
     }
 
-    LanManagerError(("%s: Failed to find an empty slot for a new row.\n", __FUNCTION__));
-    return RBUS_ERROR_BUS_ERROR;
+    *instNum = g_lanConfigInstNum;
+
+    // Add to datastore
+    LM_Status status = LanConfigDataStoreAdd(&newConfig);
+    if (status != LM_SUCCESS) {
+        LanManagerError(("%s: Failed to add new row to data store\n", __FUNCTION__));
+        g_lanConfigInstNum--;  // Rollback instance number
+        return RBUS_ERROR_BUS_ERROR;
+    }
+
+    LanManagerDebug(("%s: Added new row with instNum %d, alias %s\n", __FUNCTION__, *instNum, newConfig.bridgeInfo.alias));
+    return RBUS_ERROR_SUCCESS;
 }
 
 rbusError_t tableRemoveRowHandlerLanConfig(rbusHandle_t handle, char const* rowName)
@@ -253,9 +242,13 @@ rbusError_t tableRemoveRowHandlerLanConfig(rbusHandle_t handle, char const* rowN
     if(lanConfig)
     {
         LanManagerDebug(("%s: Removing row %s\n", __FUNCTION__, rowName));
-        memset(lanConfig, 0, sizeof(LanConfig));
-        --g_count;
-        printDataModel();
+        
+        LM_Status status = LanConfigDataStoreRemove(lanConfig);
+        if (status != LM_SUCCESS) {
+            LanManagerError(("%s: Failed to remove row from data store\n", __FUNCTION__));
+            return RBUS_ERROR_BUS_ERROR;
+        }
+        
         return RBUS_ERROR_SUCCESS;
     }
 
@@ -282,7 +275,6 @@ rbusError_t tableAddRowHandlerIface(rbusHandle_t handle, char const* tableName, 
             *instNum = lanConfig->numOfIfaces + 1;
             lanConfig->numOfIfaces++;
             LanManagerDebug(("%s: Added new Iface row with instNum %d to LanConfig %s\n", __FUNCTION__, *instNum, tableName));
-            printDataModel();
             return RBUS_ERROR_SUCCESS;
         }
         else
@@ -313,8 +305,6 @@ rbusError_t tableRemoveRowHandlerIface(rbusHandle_t handle, char const* rowName)
         // This is a simplification. A real implementation would need to shift elements.
         LanManagerDebug(("%s: Removing Iface row %s\n", __FUNCTION__, rowName));
         memset(iface, 0, sizeof(Iface));
-        //lanConfig->numOfIfaces--;
-        printDataModel();
         return RBUS_ERROR_SUCCESS;
     }
 
@@ -474,14 +464,24 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     if(propertyNameEquals(name, "Alias"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Alias\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Alias to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->bridgeInfo.alias, str, ALIAS_MAX_LEN-1);
+        lanConfig->bridgeInfo.alias[ALIAS_MAX_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "BridgeName"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for BridgeName\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting BridgeName to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->bridgeInfo.bridgeName, str, MAX_NAME_LEN-1);
+        lanConfig->bridgeInfo.bridgeName[MAX_NAME_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "NetworkBridgeType"))
     {
@@ -504,20 +504,35 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     else if(propertyNameEquals(name, "Ipv4Address"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Ipv4Address\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Ipv4Address to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->ipConfig.Ipv4Address, str, MAX_IP_LEN-1);
+        lanConfig->ipConfig.Ipv4Address[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "IpSubNet"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for IpSubNet\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting IpSubNet to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->ipConfig.IpSubNet, str, MAX_IP_LEN-1);
+        lanConfig->ipConfig.IpSubNet[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Ipv6Address"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Ipv6Address\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Ipv6Address to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->ipConfig.Ipv6Address, str, MAX_IP_LEN-1);
+        lanConfig->ipConfig.Ipv6Address[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Dhcpv4_Enable"))
     {
@@ -528,14 +543,24 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     else if(propertyNameEquals(name, "Dhcpv4_Start_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Dhcpv4_Start_Addr\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Dhcpv4_Start_Addr to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr, str, MAX_IP_LEN-1);
+        lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_Start_Addr[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Dhcpv4_End_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Dhcpv4_End_Addr\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Dhcpv4_End_Addr to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr, str, MAX_IP_LEN-1);
+        lanConfig->dhcpConfig.dhcpv4Config.Dhcpv4_End_Addr[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Dhcpv4_Lease_Time"))
     {
@@ -546,8 +571,13 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     else if(propertyNameEquals(name, "Ipv6Prefix"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Ipv6Prefix\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Ipv6Prefix to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->dhcpConfig.dhcpv6Config.Ipv6Prefix, str, MAX_PREFIX_LEN-1);
+        lanConfig->dhcpConfig.dhcpv6Config.Ipv6Prefix[MAX_PREFIX_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "StateFull"))
     {
@@ -564,14 +594,24 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
     else if(propertyNameEquals(name, "Dhcpv6_Start_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Dhcpv6_Start_Addr\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Dhcpv6_Start_Addr to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr, str, MAX_IP_LEN-1);
+        lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_Start_Addr[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Dhcpv6_End_Addr"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Dhcpv6_End_Addr\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Dhcpv6_End_Addr to '%s'\n", __FUNCTION__, str));
         strncpy(lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr, str, MAX_IP_LEN-1);
+        lanConfig->dhcpConfig.dhcpv6Config.Dhcpv6_End_Addr[MAX_IP_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "Firewall_Level"))
     {
@@ -609,7 +649,7 @@ rbusError_t setHandlerLanConfig(rbusHandle_t handle, rbusProperty_t property, rb
         LanManagerError(("%s: property %s not supported\n", __FUNCTION__, name));
         return RBUS_ERROR_BUS_ERROR;
     }
-    printDataModel();
+
     return RBUS_ERROR_SUCCESS;
 }
 
@@ -683,8 +723,13 @@ rbusError_t setHandlerIface(rbusHandle_t handle, rbusProperty_t property, rbusSe
     if(propertyNameEquals(name, "Interface"))
     {
         const char* str = rbusValue_GetString(value, NULL);
+        if(!str) {
+            LanManagerError(("%s: NULL string value for Interface\n", __FUNCTION__));
+            return RBUS_ERROR_INVALID_INPUT;
+        }
         LanManagerDebug(("%s: setting Interface to '%s'\n", __FUNCTION__, str));
         strncpy(iface->interfaceName, str, MAX_NAME_LEN-1);
+        iface->interfaceName[MAX_NAME_LEN-1] = '\0';
     }
     else if(propertyNameEquals(name, "VlanId"))
     {
@@ -703,7 +748,7 @@ rbusError_t setHandlerIface(rbusHandle_t handle, rbusProperty_t property, rbusSe
         LanManagerError(("%s: property %s not supported\n", __FUNCTION__, name));
         return RBUS_ERROR_BUS_ERROR;
     }
-    printDataModel();
+    
     return RBUS_ERROR_SUCCESS;
 }
 
@@ -853,14 +898,14 @@ rbusError_t getDhcpConfigHandler(rbusHandle_t handle, rbusProperty_t property, r
 }
 
 static rbusDataElement_t dataElements[] = {
-/*
+
     {"Device.LanManager.LanConfig.{i}.", RBUS_ELEMENT_TYPE_TABLE, {NULL, NULL, tableAddRowHandlerLanConfig, tableRemoveRowHandlerLanConfig, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Alias", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.BridgeName", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.NetworkBridgeType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.UserBridgeCategory", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.NumOfIfaces", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, NULL, NULL, NULL, eventSubHandler, NULL}},
-    {"Device.LanManager.LanConfig.{i}.IP_Enable", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHndlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
+    {"Device.LanManager.LanConfig.{i}.IP_Enable", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Ipv4Address", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.IpSubNet", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.LanConfig.{i}.Ipv6Address", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfig, setHandlerLanConfig, NULL, NULL, eventSubHandler, NULL}},
@@ -883,7 +928,7 @@ static rbusDataElement_t dataElements[] = {
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.Interface", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.VlanId", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
     {"Device.LanManager.LanConfig.{i}.Iface.{i}.InfType", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerIface, setHandlerIface, NULL, NULL, NULL, NULL}},
-*/
+
     {"Device.LanManager.LanConfigCount", RBUS_ELEMENT_TYPE_PROPERTY, {getHandlerLanConfigCount, NULL, NULL, NULL, eventSubHandler, NULL}},
     {"Device.LanManager.DhcpConfig", RBUS_ELEMENT_TYPE_PROPERTY, {getDhcpConfigHandler, NULL, NULL, NULL, eventSubHandler, NULL}}
 };
@@ -895,7 +940,6 @@ int lan_manager_register_dml()
     LanManagerDebug(("%s: Enter \n", __FUNCTION__));
     int rc = RBUS_ERROR_SUCCESS;
 
-    memset(&gDM, 0, sizeof(DataModel));
 
     rc = rbus_regDataElements(rbus_handle, sizeof(dataElements)/sizeof(rbusDataElement_t), dataElements);
     if(rc != RBUS_ERROR_SUCCESS)
